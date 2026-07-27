@@ -11,9 +11,11 @@ import os
 import random
 import re
 import secrets
+import subprocess
 import time
 import uuid
 from datetime import datetime, timedelta, timezone
+from email.utils import parsedate_to_datetime
 from pathlib import Path
 from urllib.parse import parse_qs, quote, unquote, urlencode, urljoin, urlparse, urlunparse
 from xml.etree import ElementTree as ET
@@ -699,12 +701,50 @@ VIDEO_THUMB_PREFIXES = (
 
 NITTER_INSTANCES = [
     "https://xcancel.com",
-    "https://nitter.privacyredirect.com",
+    "https://nitter.catsarch.com",
+    "https://nitter.tiekoetter.com",
+    "https://nitter.kareem.one",
+    "https://nitter.space",
+    "https://lightbrd.com",
     "https://nitter.poast.org",
-    "https://nitter.hu",
-    "https://nitter.moomoo.me",
     "https://nitter.net",
+    "https://nuku.trabun.org",
 ]
+NITTER_STATUS_API_URL = os.environ.get(
+    "NITTER_STATUS_API_URL",
+    "https://status.d420.de/api/v1/instances",
+).strip()
+NITTER_STATUS_TIMEOUT_SECONDS = 10
+NITTER_INSTANCE_PRIORITY_OVERRIDES = {
+    "https://nitter.net": -100,
+    "https://nitter.poast.org": 50,
+    "https://lightbrd.com": 100,
+}
+NITTER_REQUEST_TIMEOUT_SECONDS = 20
+NITTER_RUNTIME_DISABLE_PENALTY = 100
+NITTER_RSS_DETAIL_LIMIT = max(0, int(os.environ.get("NITTER_RSS_DETAIL_LIMIT", "20")))
+NITTER_SEARCH_HTTP_ATTEMPTS = max(1, int(os.environ.get("NITTER_SEARCH_HTTP_ATTEMPTS", "2")))
+NITTER_BROWSER_CHALLENGE_WAIT_SECONDS = max(
+    5,
+    int(os.environ.get("NITTER_BROWSER_CHALLENGE_WAIT_SECONDS", "30")),
+)
+NITTER_BROWSER_STORAGE_STATE_PATH = os.environ.get("NITTER_BROWSER_STORAGE_STATE_PATH", "").strip()
+NITTER_BROWSER_STORAGE_STATE_B64 = os.environ.get("NITTER_BROWSER_STORAGE_STATE_B64", "").strip()
+NITTER_HTTP_USER_AGENT = os.environ.get(
+    "NITTER_HTTP_USER_AGENT",
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+    "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36",
+).strip()
+NITTER_CHALLENGE_MARKERS = (
+    "anubis",
+    "checking your browser",
+    "just a moment",
+    "making sure you&#39;re not a bot",
+    "making sure you're not a bot",
+    "proof-of-work",
+    "verifying your browser",
+    "正在确认你是不是机器人",
+)
 
 
 def now_utc() -> datetime:
@@ -1752,15 +1792,38 @@ def create_opaque_token(prefix: str) -> str:
 
 
 def load_instances():
+    cached_instances: list[object] = []
     if INSTANCES_FILE.exists():
         try:
             with INSTANCES_FILE.open("r", encoding="utf-8") as fh:
-                instances = json.load(fh)
-            if instances and isinstance(instances, list):
-                print(f"[系统] 成功从本地缓存加载 {len(instances)} 个实例")
-                return instances
+                payload = json.load(fh)
+            if payload and isinstance(payload, list):
+                cached_instances = payload
         except Exception as exc:
             print(f"[系统] 加载实例缓存失败: {exc}")
+
+    if NITTER_STATUS_API_URL:
+        try:
+            response = requests.get(NITTER_STATUS_API_URL, timeout=NITTER_STATUS_TIMEOUT_SECONDS)
+            response.raise_for_status()
+            hosts = response.json().get("hosts", [])
+            live_instances = [
+                {
+                    "url": str(host["url"]).rstrip("/"),
+                    "priority": NITTER_INSTANCE_PRIORITY_OVERRIDES.get(str(host["url"]).rstrip("/"), 0),
+                }
+                for host in hosts
+                if host.get("url") and host.get("healthy") and not host.get("is_bad_host")
+            ]
+            if live_instances:
+                print(f"[系统] 从状态服务加载 {len(live_instances)} 个健康实例")
+                return live_instances
+        except (requests.RequestException, ValueError, TypeError) as exc:
+            print(f"[系统] 获取实时实例状态失败，回退本地缓存: {exc}")
+
+    if cached_instances:
+        print(f"[系统] 成功从本地缓存加载 {len(cached_instances)} 个实例")
+        return cached_instances
 
     print("[系统] 缓存不存在或损坏，采用内置兜底实例列表")
     return NITTER_INSTANCES
@@ -1800,7 +1863,11 @@ def order_instances_for_attempts(
     runtime_penalties: dict[str, int] | None = None,
 ) -> list[str]:
     runtime_penalties = runtime_penalties or {}
-    normalized_instances = normalize_instance_config(instances)
+    normalized_instances = [
+        item
+        for item in normalize_instance_config(instances)
+        if runtime_penalties.get(str(item["url"]), 0) < NITTER_RUNTIME_DISABLE_PENALTY
+    ]
 
     # Lower score wins: explicit priority first, then runtime 403 penalties.
     for item in normalized_instances:
@@ -2022,182 +2089,560 @@ def nitter_to_x_url(nitter_url: str) -> str:
     return urlunparse(("https", "x.com", parsed.path, "", parsed.query, ""))
 
 
+def penalize_nitter_instance(runtime_penalties: dict[str, int] | None, instance: str) -> None:
+    if runtime_penalties is None:
+        return
+    runtime_penalties[instance] = runtime_penalties.get(instance, 0) + NITTER_RUNTIME_DISABLE_PENALTY
+
+
+def nitter_http_headers() -> dict[str, str]:
+    return {
+        "User-Agent": NITTER_HTTP_USER_AGENT,
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8",
+    }
+
+
+def load_nitter_browser_storage_state() -> dict | str | None:
+    if NITTER_BROWSER_STORAGE_STATE_B64:
+        try:
+            encoded = "".join(NITTER_BROWSER_STORAGE_STATE_B64.split())
+            decoded = base64.b64decode(encoded, validate=True).decode("utf-8")
+            payload = json.loads(decoded)
+            if isinstance(payload, dict):
+                return payload
+        except (ValueError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+            print(f"[浏览器回退] 无法解析 NITTER_BROWSER_STORAGE_STATE_B64: {exc}")
+
+    if NITTER_BROWSER_STORAGE_STATE_PATH:
+        state_path = Path(NITTER_BROWSER_STORAGE_STATE_PATH).expanduser()
+        if state_path.is_file():
+            return str(state_path)
+        print(f"[浏览器回退] 会话状态文件不存在: {state_path}")
+    return None
+
+
+def fetch_nitter_with_curl(url: str, accept: str | None = None) -> tuple[int, str] | None:
+    headers = nitter_http_headers()
+    if accept:
+        headers["Accept"] = accept
+    command = [
+        "curl",
+        "--silent",
+        "--show-error",
+        "--location",
+        "--compressed",
+        "--max-time",
+        str(NITTER_REQUEST_TIMEOUT_SECONDS),
+        "--user-agent",
+        headers.pop("User-Agent"),
+    ]
+    for name, value in headers.items():
+        command.extend(["--header", f"{name}: {value}"])
+    command.extend(["--write-out", "\n%{http_code}", url])
+
+    try:
+        completed = subprocess.run(
+            command,
+            capture_output=True,
+            check=False,
+            timeout=NITTER_REQUEST_TIMEOUT_SECONDS + 5,
+        )
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        return None
+    if completed.returncode != 0 or b"\n" not in completed.stdout:
+        return None
+
+    body, raw_status = completed.stdout.rsplit(b"\n", 1)
+    try:
+        status_code = int(raw_status.strip())
+    except ValueError:
+        return None
+    return status_code, body.decode("utf-8", errors="replace")
+
+
+def classify_nitter_page(status_code: int, html: str) -> str:
+    if status_code in {401, 403, 429}:
+        return "denied"
+    if status_code >= 500:
+        return "server_error"
+    if status_code < 200 or status_code >= 300:
+        return "http_error"
+    if not html.strip():
+        return "empty"
+
+    lowered = html.lower()
+    if any(marker in lowered for marker in NITTER_CHALLENGE_MARKERS):
+        return "challenge"
+    if "timeline-item" in lowered:
+        return "timeline"
+    return "no_timeline"
+
+
+def absolute_nitter_url(instance: str, value: str) -> str:
+    if value.startswith("//"):
+        return "https:" + value
+    return urljoin(instance.rstrip("/") + "/", value)
+
+
+def parse_nitter_timeline_html(target: str, instance: str, html: str) -> list[dict]:
+    is_search = target.startswith("search:")
+    keyword = target[7:] if is_search else target
+    soup = BeautifulSoup(html, "html.parser")
+    valid_tweets: list[dict] = []
+
+    for item in soup.select(".timeline-item")[:20]:
+        if item.select_one(".pinned") is not None:
+            print(f"[{target}] 发现置顶推文，跳过")
+            continue
+
+        content_el = item.select_one(".tweet-content")
+        link_el = item.select_one(".tweet-link[href]") or item.select_one(".tweet-date a[href]")
+        if not content_el or not link_el:
+            continue
+
+        is_retweet = item.select_one(".retweet-header") is not None
+        images = []
+        for img in item.select(".attachment.image img, .tweet-image img, .still-image img, .attachments img"):
+            if any(cls in str(img.parent.get("class", [])) for cls in ["avatar", "profile"]):
+                continue
+            src = img.get("src", "")
+            if not src or "emoji" in src.lower() or "hashtag_click" in src:
+                continue
+            image_url = get_original_image_url(absolute_nitter_url(instance, src))
+            if image_url not in images:
+                images.append(image_url)
+
+        video_url = None
+        video_poster_url = None
+        try:
+            video_el = item.select_one("video source") or item.select_one("video")
+            if video_el:
+                poster_el = item.select_one("video")
+                if poster_el:
+                    poster = poster_el.get("poster", "")
+                    if poster:
+                        video_poster_url = get_original_image_url(absolute_nitter_url(instance, poster))
+                        if video_poster_url not in images:
+                            images.append(video_poster_url)
+
+                video_src = video_el.get("src", "") or video_el.get("data-url", "") or video_el.get("data-src", "")
+                if video_src:
+                    video_url = get_original_video_url(video_src, instance)
+
+            video_download = item.select_one("a.video-download[href]")
+            if not video_url and video_download:
+                video_url = get_original_video_url(video_download.get("href", ""), instance)
+            if video_download and not video_poster_url and images:
+                video_poster_url = images[0]
+        except Exception as exc:
+            print(f"[{target}] 视频提取异常: {exc}")
+
+        link_href = link_el.get("href", "")
+        if not link_href:
+            continue
+        tweet_id = link_href.split("/status/")[-1].split("#")[0] if "/status/" in link_href else link_href
+        nitter_link = absolute_nitter_url(instance, link_href)
+        raw_content = content_el.get_text(strip=True)
+        clean_content = raw_content.replace("€∋", "").strip()
+        date_el = item.select_one(".tweet-date a")
+        author_el = item.select_one(".username")
+        fullname_el = item.select_one(".fullname")
+
+        valid_tweets.append(
+            {
+                "target": target,
+                "target_type": "keyword" if is_search else "user",
+                "target_value": keyword,
+                "content": clean_content,
+                "raw_content": raw_content,
+                "translated_content": translate_text(clean_content) if AUTO_TRANSLATE else None,
+                "link": nitter_link,
+                "x_url": nitter_to_x_url(nitter_link),
+                "published": date_el.get("title", "") if date_el else "",
+                "author": author_el.get_text(strip=True) if author_el else keyword,
+                "fullname": fullname_el.get_text(" ", strip=True) if fullname_el else None,
+                "guid": tweet_id,
+                "is_retweet": is_retweet,
+                "images": images,
+                "video_url": video_url,
+                "video_poster_url": video_poster_url,
+                "stored_at": now_iso(),
+                "source_instance": instance,
+            }
+        )
+
+    return valid_tweets
+
+
+def parse_nitter_rss(target: str, instance: str, rss_xml: str) -> list[dict]:
+    if not rss_xml.strip():
+        return []
+
+    is_search = target.startswith("search:")
+    target_value = target[7:] if is_search else target
+
+    try:
+        root = ET.fromstring(rss_xml)
+    except ET.ParseError:
+        return []
+
+    channel = root.find("channel")
+    if channel is None:
+        return []
+
+    channel_title = channel.findtext("title") or ""
+    channel_description = channel.findtext("description") or ""
+    if "rss reader not yet whitelist" in f"{channel_title} {channel_description}".lower():
+        return []
+    fullname = None if is_search else channel_title.split(" / @", 1)[0].strip() or None
+    creator_tag = "{http://purl.org/dc/elements/1.1/}creator"
+    tweets: list[dict] = []
+
+    for item in channel.findall("item")[:20]:
+        guid = (item.findtext("guid") or "").strip()
+        link = (item.findtext("link") or "").strip()
+        if not guid or not link:
+            continue
+
+        description_html = item.findtext("description") or ""
+        description = BeautifulSoup(description_html, "html.parser")
+        paragraph = description.find("p")
+        raw_content = paragraph.get_text(" ", strip=True) if paragraph else (item.findtext("title") or "").strip()
+        clean_content = raw_content.replace("€∋", "").strip()
+        images: list[str] = []
+        for img in description.select("img[src]"):
+            image_url = get_original_image_url(absolute_nitter_url(instance, img.get("src", "")))
+            if image_url and image_url not in images:
+                images.append(image_url)
+
+        description_text = description.get_text(" ", strip=True).lower()
+        video_poster_url = images[0] if "video" in description_text and images else None
+        published_raw = (item.findtext("pubDate") or "").strip()
+        try:
+            published = parsedate_to_datetime(published_raw).isoformat() if published_raw else ""
+        except (TypeError, ValueError):
+            published = published_raw
+
+        author = (item.findtext(creator_tag) or target_value).strip()
+        tweets.append(
+            {
+                "target": target,
+                "target_type": "keyword" if is_search else "user",
+                "target_value": target_value,
+                "content": clean_content,
+                "raw_content": raw_content,
+                "translated_content": translate_text(clean_content) if AUTO_TRANSLATE else None,
+                "link": link,
+                "x_url": nitter_to_x_url(link),
+                "published": published,
+                "author": author,
+                "fullname": fullname,
+                "guid": guid,
+                "is_retweet": description_text.startswith("rt by "),
+                "images": images,
+                "video_url": None,
+                "video_poster_url": video_poster_url,
+                "stored_at": now_iso(),
+                "source_instance": instance,
+            }
+        )
+
+    return tweets
+
+
+def enrich_nitter_rss_tweets(
+    target: str,
+    instance: str,
+    tweets: list[dict],
+    stop_at_guid: str | None = None,
+) -> list[dict]:
+    enriched_count = 0
+    consecutive_failures = 0
+    for tweet in tweets:
+        if stop_at_guid and tweet["guid"] == stop_at_guid:
+            break
+        if not tweet.get("video_poster_url") or tweet.get("video_url"):
+            continue
+        if enriched_count >= NITTER_RSS_DETAIL_LIMIT or consecutive_failures >= 2:
+            break
+
+        enriched_count += 1
+        response = None
+        for attempt in range(2):
+            try:
+                response = requests.get(
+                    tweet["link"],
+                    headers=nitter_http_headers(),
+                    timeout=NITTER_REQUEST_TIMEOUT_SECONDS,
+                )
+            except requests.RequestException:
+                response = None
+            if response is not None and classify_nitter_page(response.status_code, response.text) == "timeline":
+                break
+            if attempt == 0:
+                time.sleep(1)
+
+        response_status = response.status_code if response is not None else 0
+        response_text = response.text if response is not None else ""
+        if classify_nitter_page(response_status, response_text) != "timeline":
+            curl_response = fetch_nitter_with_curl(tweet["link"])
+            if curl_response is not None:
+                response_status, response_text = curl_response
+
+        if classify_nitter_page(response_status, response_text) != "timeline":
+            print(f"[{target}] RSS 详情补全失败: {tweet['link']}")
+            consecutive_failures += 1
+            continue
+
+        detail_tweets = parse_nitter_timeline_html(target, instance, response_text)
+        detail = next((item for item in detail_tweets if item["guid"] == tweet["guid"]), None)
+        if not detail:
+            print(f"[{target}] RSS 详情未找到推文 {tweet['guid']}: {tweet['link']}")
+            consecutive_failures += 1
+            continue
+
+        consecutive_failures = 0
+        for field in (
+            "content",
+            "raw_content",
+            "translated_content",
+            "published",
+            "author",
+            "fullname",
+            "images",
+            "video_url",
+            "video_poster_url",
+            "is_retweet",
+        ):
+            if detail.get(field) not in (None, "", []):
+                tweet[field] = detail[field]
+
+    return tweets
+
+
+def fetch_nitter_rss_tweets(
+    target: str,
+    instance: str,
+    stop_at_guid: str | None = None,
+) -> list[dict]:
+    if target.startswith("search:"):
+        rss_url = f"{instance.rstrip('/')}/search/rss?f=tweets&q={quote(target[7:])}"
+    else:
+        rss_url = f"{instance.rstrip('/')}/{quote(target)}/rss"
+    response = requests.get(
+        rss_url,
+        headers={**nitter_http_headers(), "Accept": "application/rss+xml,application/xml;q=0.9,*/*;q=0.8"},
+        timeout=NITTER_REQUEST_TIMEOUT_SECONDS,
+    )
+    response_status = response.status_code
+    response_text = response.text
+    if response_status == 200 and not response_text.strip():
+        curl_response = fetch_nitter_with_curl(
+            rss_url,
+            "application/rss+xml,application/xml;q=0.9,*/*;q=0.8",
+        )
+        if curl_response is not None:
+            response_status, response_text = curl_response
+    if response_status != 200:
+        return []
+    tweets = parse_nitter_rss(target, instance, response_text)
+    return enrich_nitter_rss_tweets(target, instance, tweets, stop_at_guid)
+
+
+def fetch_nitter_with_browser(
+    target: str,
+    playwright_fallbacks: list[tuple[str, str]],
+    runtime_penalties: dict[str, int] | None = None,
+) -> list[dict]:
+    if not playwright_fallbacks:
+        return []
+
+    try:
+        from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
+        from playwright.sync_api import sync_playwright
+    except ModuleNotFoundError as exc:
+        print(f"[{target}] 缺少浏览器回退依赖: {exc}")
+        for instance, _url in playwright_fallbacks:
+            penalize_nitter_instance(runtime_penalties, instance)
+        return []
+
+    try:
+        from playwright_stealth import stealth_sync
+    except (ImportError, ModuleNotFoundError) as exc:
+        print(f"[{target}] Playwright stealth 不可用，将使用标准浏览器: {exc}")
+
+        def stealth_sync(_page) -> None:
+            return None
+
+    storage_state = load_nitter_browser_storage_state()
+    with sync_playwright() as playwright:
+        try:
+            browser = playwright.chromium.launch(headless=True)
+        except Exception as exc:
+            print(f"[{target}] 无法启动 Playwright Chromium: {exc}")
+            for instance, _url in playwright_fallbacks:
+                penalize_nitter_instance(runtime_penalties, instance)
+            return []
+        try:
+            for instance, url in playwright_fallbacks:
+                context_options: dict[str, object] = {
+                    "user_agent": NITTER_HTTP_USER_AGENT,
+                    "viewport": {"width": 1280, "height": 720},
+                }
+                if storage_state is not None:
+                    context_options["storage_state"] = storage_state
+                context = None
+                try:
+                    context = browser.new_context(**context_options)
+                    page = context.new_page()
+                    stealth_sync(page)
+                    browser_response = page.goto(url, wait_until="domcontentloaded", timeout=30000)
+                    html = page.content()
+                    status_code = browser_response.status if browser_response else 0
+                    page_state = classify_nitter_page(status_code, html)
+                    if page_state in {"challenge", "empty"}:
+                        try:
+                            page.wait_for_selector(
+                                ".timeline-item",
+                                timeout=NITTER_BROWSER_CHALLENGE_WAIT_SECONDS * 1000,
+                            )
+                        except PlaywrightTimeoutError:
+                            pass
+                        html = page.content()
+                        page_state = classify_nitter_page(status_code, html)
+
+                    if page_state == "timeline":
+                        tweets = parse_nitter_timeline_html(target, instance, html)
+                        if tweets:
+                            print(
+                                f"[{target}] 浏览器回退从 {instance} 抓取 {len(tweets)} 条候选推文，"
+                                f"最新 ID: {tweets[0]['guid']}"
+                            )
+                            return tweets
+
+                    print(f"[{target}] 浏览器回退未能从 {instance} 获取时间线 ({page_state})")
+                    penalize_nitter_instance(runtime_penalties, instance)
+                except Exception as exc:
+                    print(f"[{target}] 浏览器回退访问 {instance} 失败: {exc}")
+                    penalize_nitter_instance(runtime_penalties, instance)
+                finally:
+                    if context is not None and isinstance(storage_state, str):
+                        try:
+                            context.storage_state(path=storage_state)
+                        except Exception as exc:
+                            print(f"[{target}] 更新浏览器会话状态失败: {exc}")
+                    if context is not None:
+                        context.close()
+        finally:
+            browser.close()
+    return []
+
+
 def scrape_nitter_with_playwright(
     target: str,
     dynamic_instances: list[str] | None = None,
     runtime_penalties: dict[str, int] | None = None,
+    stop_at_guid: str | None = None,
 ) -> list[dict]:
-    try:
-        from playwright.sync_api import sync_playwright
-        from playwright_stealth import stealth_sync
-    except ModuleNotFoundError as exc:
-        print(f"[{target}] 缺少抓取依赖: {exc}")
-        return []
-
     is_search = target.startswith("search:")
     keyword = target[7:] if is_search else target
+    if dynamic_instances is None:
+        instances = order_instances_for_attempts(NITTER_INSTANCES, runtime_penalties)
+    else:
+        instances = list(dynamic_instances)
 
-    instances = list(dynamic_instances or order_instances_for_attempts(list(dynamic_instances or NITTER_INSTANCES)))
+    if not instances:
+        print(f"[{target}] 本轮没有可用的 Nitter 实例")
+        return []
 
-    with sync_playwright() as p:
-        browser = p.chromium.launch(headless=True)
-        for instance in instances:
-            context = None
-            try:
-                context = browser.new_context(
-                    user_agent=get_random_user_agent(),
-                    viewport={"width": 1280, "height": 720},
-                )
-                page = context.new_page()
-                stealth_sync(page)
+    playwright_fallbacks: list[tuple[str, str]] = []
+    for instance in instances:
+        if is_search:
+            url = f"{instance.rstrip('/')}/search?f=tweets&q={quote(keyword)}"
+        else:
+            url = f"{instance.rstrip('/')}/{quote(keyword)}"
 
-                if is_search:
-                    url = f"{instance.rstrip('/')}/search?f=tweets&q={quote(keyword)}"
-                else:
-                    url = f"{instance.rstrip('/')}/{keyword}"
+        print(f"[{target}] 正在加载: {url}")
+        try:
+            response = requests.get(url, headers=nitter_http_headers(), timeout=NITTER_REQUEST_TIMEOUT_SECONDS)
+        except requests.RequestException as exc:
+            curl_response = fetch_nitter_with_curl(url)
+            if curl_response is None:
+                print(f"[{target}] HTTP 加载 {instance} 失败，将尝试浏览器回退: {exc}")
+                playwright_fallbacks.append((instance, url))
+                continue
+            status_code, response_text = curl_response
+        else:
+            status_code = response.status_code
+            response_text = response.text
 
-                print(f"[{target}] 正在加载: {url}")
+        page_state = classify_nitter_page(status_code, response_text)
+        if page_state == "empty":
+            curl_response = fetch_nitter_with_curl(url)
+            if curl_response is not None:
+                status_code, response_text = curl_response
+                page_state = classify_nitter_page(status_code, response_text)
+        if is_search and page_state == "empty":
+            for attempt in range(1, NITTER_SEARCH_HTTP_ATTEMPTS):
+                time.sleep(attempt)
                 try:
-                    response = page.goto(url, wait_until="networkidle", timeout=45000)
-                    if response and response.status == 403:
-                        print(f"[{target}] 访问 {instance} 被拒 (403 Forbidden)")
-                        if runtime_penalties is not None:
-                            runtime_penalties[instance] = runtime_penalties.get(instance, 0) + 100
-                        context.close()
-                        context = None
-                        continue
-                except Exception as exc:
-                    print(f"[{target}] 加载 {instance} 超时或失败: {exc}")
-                    context.close()
-                    context = None
+                    response = requests.get(
+                        url,
+                        headers=nitter_http_headers(),
+                        timeout=NITTER_REQUEST_TIMEOUT_SECONDS,
+                    )
+                except requests.RequestException:
                     continue
+                status_code = response.status_code
+                response_text = response.text
+                page_state = classify_nitter_page(status_code, response_text)
+                if page_state != "empty":
+                    break
+        if page_state == "timeline":
+            tweets = parse_nitter_timeline_html(target, instance, response_text)
+            if tweets:
+                print(
+                    f"[{target}] 成功从 {instance} 抓取 {len(tweets)} 条候选推文，"
+                    f"最新 ID: {tweets[0]['guid']}"
+                )
+                return tweets
 
-                challenge_keywords = ["Verifying your browser", "Just a moment", "Checking your browser"]
-                for _ in range(5):
-                    content = page.content()
-                    if any(keyword in content for keyword in challenge_keywords):
-                        page.wait_for_timeout(5000)
-                    else:
-                        break
+        try:
+            rss_tweets = fetch_nitter_rss_tweets(target, instance, stop_at_guid)
+        except requests.RequestException as exc:
+            print(f"[{target}] {instance} RSS 回退失败: {exc}")
+            rss_tweets = []
+        if rss_tweets:
+            print(
+                f"[{target}] HTML 未返回时间线，已通过 {instance} RSS 抓取 "
+                f"{len(rss_tweets)} 条候选推文，最新 ID: {rss_tweets[0]['guid']}"
+            )
+            return rss_tweets
 
-                soup = BeautifulSoup(page.content(), "html.parser")
-                items = soup.select(".timeline-item")
-                if not items:
-                    print(f"[{target}] 在实例 {instance} 上未发现推文内容")
-                    context.close()
-                    context = None
-                    continue
+        if page_state == "challenge":
+            print(f"[{target}] {instance} 返回人机验证页，将尝试真实浏览器会话")
+            playwright_fallbacks.append((instance, url))
+            continue
+        if page_state == "denied":
+            print(f"[{target}] 访问 {instance} 被拒 ({status_code})，将尝试已授权浏览器会话")
+            playwright_fallbacks.append((instance, url))
+            continue
+        if page_state == "server_error":
+            print(f"[{target}] {instance} 服务异常 ({status_code})，本轮停用该实例")
+            penalize_nitter_instance(runtime_penalties, instance)
+            continue
+        if page_state == "http_error":
+            print(f"[{target}] {instance} 返回 HTTP {status_code}")
+            continue
 
-                valid_tweets = []
-                for item in items[:20]:
-                    if item.select_one(".pinned") is not None:
-                        print(f"[{target}] 发现置顶推文，跳过")
-                        continue
+        if page_state == "empty":
+            print(f"[{target}] {instance} 返回 200 空响应，将尝试真实浏览器会话")
+            playwright_fallbacks.append((instance, url))
+        else:
+            print(f"[{target}] 在实例 {instance} 上未发现推文内容")
 
-                    is_retweet = item.select_one(".retweet-header") is not None
-                    images = []
-                    for img in item.select(".attachment.image img, .tweet-image img, .still-image img, .attachments img"):
-                        if any(cls in str(img.parent.get("class", [])) for cls in ["avatar", "profile"]):
-                            continue
-                        src = img.get("src", "")
-                        if not src or "emoji" in src.lower() or "hashtag_click" in src:
-                            continue
-
-                        if src.startswith("//"):
-                            full_src = "https:" + src
-                        elif src.startswith("/"):
-                            full_src = instance.rstrip("/") + src
-                        else:
-                            full_src = src
-                        images.append(get_original_image_url(full_src))
-
-                    video_url = None
-                    video_poster_url = None
-                    try:
-                        video_el = item.select_one("video source") or item.select_one("video")
-                        if video_el:
-                            poster_el = item.select_one("video")
-                            if poster_el:
-                                poster = poster_el.get("poster", "")
-                                if poster:
-                                    if poster.startswith("//"):
-                                        full_poster = "https:" + poster
-                                    elif poster.startswith("/"):
-                                        full_poster = instance.rstrip("/") + poster
-                                    else:
-                                        full_poster = poster
-                                    video_poster_url = get_original_image_url(full_poster)
-                                    if video_poster_url not in images:
-                                        images.append(video_poster_url)
-
-                            v_src = (
-                                video_el.get("src", "")
-                                or video_el.get("data-url", "")
-                                or video_el.get("data-src", "")
-                            )
-                            if v_src:
-                                video_url = get_original_video_url(v_src, instance)
-                    except Exception as exc:
-                        print(f"[{target}] 视频提取异常: {exc}")
-
-                    content_el = item.select_one(".tweet-content")
-                    link_el = item.select_one(".tweet-link")
-                    date_el = item.select_one(".tweet-date a")
-                    author_el = item.select_one(".username")
-                    fullname_el = item.select_one(".fullname")
-                    if not content_el or not link_el:
-                        continue
-
-                    link_href = link_el.get("href", "")
-                    tweet_id = link_href.split("/status/")[-1].split("#")[0] if "/status/" in link_href else link_href
-                    nitter_link = instance.rstrip("/") + link_href
-                    raw_content = content_el.get_text(strip=True)
-                    clean_content = raw_content.replace("€∋", "").strip()
-                    published = date_el.get("title", "") if date_el else ""
-
-                    tweet = {
-                        "target": target,
-                        "target_type": "keyword" if is_search else "user",
-                        "target_value": keyword,
-                        "content": clean_content,
-                        "raw_content": raw_content,
-                        "translated_content": translate_text(clean_content) if AUTO_TRANSLATE else None,
-                        "link": nitter_link,
-                        "x_url": nitter_to_x_url(nitter_link),
-                        "published": published,
-                        "author": author_el.get_text(strip=True) if author_el else keyword,
-                        "fullname": fullname_el.get_text(" ", strip=True) if fullname_el else None,
-                        "guid": tweet_id,
-                        "is_retweet": is_retweet,
-                        "images": images,
-                        "video_url": video_url,
-                        "video_poster_url": video_poster_url,
-                        "stored_at": now_iso(),
-                        "source_instance": instance,
-                    }
-                    valid_tweets.append(tweet)
-
-                if valid_tweets:
-                    newest_id = valid_tweets[0]["guid"]
-                    print(f"[{target}] 成功从 {instance} 抓取 {len(valid_tweets)} 条候选推文，最新 ID: {newest_id}")
-                    context.close()
-                    browser.close()
-                    return valid_tweets
-
-                print(f"[{target}] {instance} 页面上未找到符合条件的非置顶推文")
-                context.close()
-                context = None
-            except Exception as exc:
-                print(f"[{target}] 访问 {instance} 出错: {exc}")
-            finally:
-                if context is not None:
-                    try:
-                        context.close()
-                    except Exception:
-                        pass
-
-        browser.close()
-    return []
+    return fetch_nitter_with_browser(target, playwright_fallbacks, runtime_penalties)
 
 
 def upsert_target(conn, target: str) -> dict:
@@ -4802,6 +5247,53 @@ def refresh_douyin_playback_urls(conn, limit: int, refresh_window_minutes: int, 
     return {"processed": processed, "refreshed": refreshed, "failed": failed}
 
 
+def command_nitter_browser_auth(args) -> int:
+    try:
+        from playwright.sync_api import sync_playwright
+    except ModuleNotFoundError as exc:
+        print(f"缺少 Playwright 依赖: {exc}")
+        return 1
+
+    state_path = Path(args.output).expanduser().resolve()
+    profile_dir = Path(args.profile_dir).expanduser().resolve()
+    state_path.parent.mkdir(parents=True, exist_ok=True)
+    profile_dir.mkdir(parents=True, exist_ok=True)
+
+    target = args.target.strip()
+    if not target:
+        raise ValueError("target cannot be empty")
+
+    with sync_playwright() as playwright:
+        context = playwright.chromium.launch_persistent_context(
+            user_data_dir=str(profile_dir),
+            headless=False,
+            user_agent=NITTER_HTTP_USER_AGENT,
+            viewport={"width": 1280, "height": 720},
+        )
+        try:
+            for index, raw_instance in enumerate(args.instance):
+                instance = raw_instance.strip().rstrip("/")
+                if not instance:
+                    continue
+                if target.startswith("search:"):
+                    url = f"{instance}/search?f=tweets&q={quote(target[7:])}"
+                else:
+                    url = f"{instance}/{quote(target)}"
+                page = context.pages[0] if index == 0 and context.pages else context.new_page()
+                try:
+                    page.goto(url, wait_until="domcontentloaded", timeout=30000)
+                except Exception as exc:
+                    print(f"[浏览器授权] 打开 {url} 失败: {exc}")
+
+            print("请在浏览器中完成站点要求的验证；全部完成后回到终端按 Enter。")
+            input()
+            context.storage_state(path=str(state_path))
+            print(f"浏览器会话状态已保存到: {state_path}")
+        finally:
+            context.close()
+    return 0
+
+
 def command_monitor(args) -> int:
     instances = load_instances()
     runtime_penalties: dict[str, int] = {}
@@ -4846,7 +5338,12 @@ def command_monitor(args) -> int:
             previous_id = target_row.get("last_guid")
             try:
                 ordered_instances = order_instances_for_attempts(instances, runtime_penalties)
-                tweets = scrape_nitter_with_playwright(target, ordered_instances, runtime_penalties)
+                tweets = scrape_nitter_with_playwright(
+                    target,
+                    ordered_instances,
+                    runtime_penalties,
+                    stop_at_guid=previous_id,
+                )
                 if not tweets:
                     upsert_crawl_state(conn, target_row["id"], last_guid=previous_id, last_error="No tweets returned.", success=False)
                     conn.commit()
@@ -5850,6 +6347,29 @@ def build_parser() -> argparse.ArgumentParser:
     monitor_parser.add_argument("--shard-index", type=int, default=0, help="当前分片编号，从 0 开始")
     monitor_parser.add_argument("--shard-count", type=int, default=1, help="总分片数")
     monitor_parser.set_defaults(func=command_monitor)
+
+    nitter_auth_parser = subparsers.add_parser(
+        "nitter-browser-auth",
+        help="打开有界面浏览器，人工完成 Nitter 验证并保存可复用会话",
+    )
+    nitter_auth_parser.add_argument(
+        "--instance",
+        action="append",
+        required=True,
+        help="要授权的 Nitter 实例，可重复传入",
+    )
+    nitter_auth_parser.add_argument("--target", default="azjok1", help="用于打开实例的用户或 search:关键词")
+    nitter_auth_parser.add_argument(
+        "--profile-dir",
+        default=str(DATA_DIR / "nitter_browser_profile"),
+        help="专用 Chromium 用户目录",
+    )
+    nitter_auth_parser.add_argument(
+        "--output",
+        default=str(DATA_DIR / "nitter_browser_state.json"),
+        help="Playwright storage state 输出文件",
+    )
+    nitter_auth_parser.set_defaults(func=command_nitter_browser_auth)
 
     youtube_monitor_parser = subparsers.add_parser("monitor-youtube", help="单独抓取 YouTube RSS 并解析播放 URL")
     youtube_monitor_parser.add_argument("--targets", help="覆盖 YouTube 订阅目标，逗号或换行分隔，格式 youtube:UC...")

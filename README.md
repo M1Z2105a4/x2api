@@ -89,6 +89,19 @@ DATABASE_URL=... python3 collector/twitter_monitor.py monitor
 DATABASE_URL=... python3 collector/twitter_monitor.py monitor --shard-index 0 --shard-count 3
 ```
 
+遇到需要浏览器确认的 Nitter 实例时，可先在本机生成一个专用 Playwright 会话：
+
+```bash
+python3 collector/twitter_monitor.py nitter-browser-auth \
+  --instance https://xcancel.com \
+  --instance https://nitter.catsarch.com \
+  --target azjok1
+```
+
+完成页面验证后，定时采集可通过 `NITTER_BROWSER_STORAGE_STATE_PATH=data/nitter_browser_state.json`
+复用本机会话。GitHub Actions 使用仓库 Secret `NITTER_BROWSER_STORAGE_STATE_B64` 注入同一份
+storage state；会话若与出口 IP 绑定，应改用同一台机器上的自托管运行器。
+
 ### 6. 启动服务
 
 ```bash

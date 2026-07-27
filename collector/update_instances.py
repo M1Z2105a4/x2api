@@ -9,6 +9,8 @@ API_URL = "https://status.d420.de/api/v1/instances"
 
 DEFAULT_PRIORITY = 0
 INSTANCE_PRIORITY_OVERRIDES = {
+    "https://nitter.net": -100,
+    "https://nitter.poast.org": 50,
     "https://lightbrd.com": 100,
 }
 

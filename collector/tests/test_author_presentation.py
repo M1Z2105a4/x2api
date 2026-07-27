@@ -49,7 +49,7 @@ class FakeCursor:
 
 
 class FakeConnection:
-    def cursor(self):
+    def cursor(self, **_kwargs):
         return FakeCursor()
 
 
