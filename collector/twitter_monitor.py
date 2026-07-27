@@ -1869,13 +1869,10 @@ def order_instances_for_attempts(
     runtime_penalties: dict[str, int] | None = None,
 ) -> list[str]:
     runtime_penalties = runtime_penalties or {}
-    normalized_instances = [
-        item
-        for item in normalize_instance_config(instances)
-        if runtime_penalties.get(str(item["url"]), 0) < NITTER_RUNTIME_DISABLE_PENALTY
-    ]
+    normalized_instances = normalize_instance_config(instances)
 
-    # Lower score wins: explicit priority first, then runtime 403 penalties.
+    # Lower score wins. Runtime failures move an instance later without removing
+    # it permanently; transient 429/403 responses must not exhaust the pool.
     for item in normalized_instances:
         url = str(item["url"])
         item["sort_score"] = int(item["priority"]) + runtime_penalties.get(url, 0)
@@ -2110,6 +2107,11 @@ def nitter_http_headers() -> dict[str, str]:
 
 
 def load_nitter_browser_storage_state() -> dict | str | None:
+    if NITTER_BROWSER_STORAGE_STATE_PATH:
+        state_path = Path(NITTER_BROWSER_STORAGE_STATE_PATH).expanduser()
+        if state_path.is_file():
+            return str(state_path)
+
     if NITTER_BROWSER_STORAGE_STATE_B64:
         try:
             encoded = "".join(NITTER_BROWSER_STORAGE_STATE_B64.split())
@@ -2120,12 +2122,15 @@ def load_nitter_browser_storage_state() -> dict | str | None:
         except (ValueError, UnicodeDecodeError, json.JSONDecodeError) as exc:
             print(f"[浏览器回退] 无法解析 NITTER_BROWSER_STORAGE_STATE_B64: {exc}")
 
-    if NITTER_BROWSER_STORAGE_STATE_PATH:
-        state_path = Path(NITTER_BROWSER_STORAGE_STATE_PATH).expanduser()
-        if state_path.is_file():
-            return str(state_path)
-        print(f"[浏览器回退] 会话状态文件不存在: {state_path}")
     return None
+
+
+def nitter_browser_storage_state_output_path() -> str | None:
+    if not NITTER_BROWSER_STORAGE_STATE_PATH:
+        return None
+    state_path = Path(NITTER_BROWSER_STORAGE_STATE_PATH).expanduser()
+    state_path.parent.mkdir(parents=True, exist_ok=True)
+    return str(state_path)
 
 
 def fetch_nitter_with_curl(url: str, accept: str | None = None) -> tuple[int, str] | None:
@@ -2474,6 +2479,7 @@ def fetch_nitter_with_browser(
         return []
 
     storage_state = load_nitter_browser_storage_state()
+    storage_state_output = nitter_browser_storage_state_output_path()
     with sync_playwright() as playwright:
         launch_options: dict[str, object] = {"headless": NITTER_BROWSER_HEADLESS}
         if NITTER_BROWSER_CHANNEL:
@@ -2515,6 +2521,8 @@ def fetch_nitter_with_browser(
                     if page_state == "timeline":
                         tweets = parse_nitter_timeline_html(target, instance, html)
                         if tweets:
+                            if runtime_penalties is not None:
+                                runtime_penalties.pop(instance, None)
                             print(
                                 f"[{target}] 浏览器回退从 {instance} 抓取 {len(tweets)} 条候选推文，"
                                 f"最新 ID: {tweets[0]['guid']}"
@@ -2522,14 +2530,15 @@ def fetch_nitter_with_browser(
                             return tweets
 
                     print(f"[{target}] 浏览器回退未能从 {instance} 获取时间线 ({page_state})")
-                    penalize_nitter_instance(runtime_penalties, instance)
+                    if page_state != "no_timeline":
+                        penalize_nitter_instance(runtime_penalties, instance)
                 except Exception as exc:
                     print(f"[{target}] 浏览器回退访问 {instance} 失败: {exc}")
                     penalize_nitter_instance(runtime_penalties, instance)
                 finally:
-                    if context is not None and isinstance(storage_state, str):
+                    if context is not None and storage_state_output:
                         try:
-                            context.storage_state(path=storage_state)
+                            context.storage_state(path=storage_state_output)
                         except Exception as exc:
                             print(f"[{target}] 更新浏览器会话状态失败: {exc}")
                     if context is not None:
