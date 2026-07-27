@@ -32,6 +32,8 @@ Thumbs.db
 
 # 查询结果是临时产物
 data/query_results/
+data/nitter_browser_profile/
+data/nitter_browser_state.json
 
 # Service / Next.js
 node_modules/
