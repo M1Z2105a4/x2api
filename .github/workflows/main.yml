@@ -71,7 +71,7 @@ jobs:
   monitor:
     needs: prepare
     runs-on: ubuntu-latest
-    timeout-minutes: 40
+    timeout-minutes: 45
     concurrency:
       group: ${{ github.workflow }}-${{ needs.prepare.outputs.shard_count }}-${{ matrix.shard }}
       cancel-in-progress: false
