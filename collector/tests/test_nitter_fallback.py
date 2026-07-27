@@ -201,7 +201,7 @@ class NitterFallbackTest(unittest.TestCase):
         "collector.twitter_monitor.requests.get",
         return_value=FakeResponse(200, "<title>Verifying your browser...</title>"),
     )
-    def test_challenge_uses_browser_then_disables_failed_instance(self, _request_get, browser_fetch):
+    def test_challenge_uses_browser_then_deprioritizes_failed_instance(self, _request_get, browser_fetch):
         penalties: dict[str, int] = {}
 
         def fail_browser(_target, fallbacks, runtime_penalties):
@@ -222,8 +222,17 @@ class NitterFallbackTest(unittest.TestCase):
         self.assertEqual(penalties["https://xcancel.com"], NITTER_RUNTIME_DISABLE_PENALTY)
         self.assertEqual(
             order_instances_for_attempts(["https://xcancel.com", "https://nitter.net"], penalties),
-            ["https://nitter.net"],
+            ["https://nitter.net", "https://xcancel.com"],
         )
+
+    def test_all_penalized_instances_remain_available(self):
+        instances = ["https://xcancel.com", "https://nitter.net"]
+        penalties = {instance: NITTER_RUNTIME_DISABLE_PENALTY for instance in instances}
+
+        ordered = order_instances_for_attempts(instances, penalties)
+
+        self.assertEqual(len(ordered), 2)
+        self.assertCountEqual(ordered, instances)
 
 
 if __name__ == "__main__":

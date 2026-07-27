@@ -104,6 +104,8 @@ storage state；会话若与出口 IP 绑定，应改用同一台机器上的自
 
 GitHub Actions 使用 `xvfb-run` 启动有界面的系统 Chrome。不要为 Nitter 验证页注入旧版
 `playwright-stealth`；该插件会破坏 Anubis 脚本并导致验证一直停留在加载页。
+同一分片任务会把验证 Cookie 保存在 Runner 临时目录中，供后续账号复用；实例失败只会降低
+本轮尝试优先级，不会再清空整个实例池。
 
 ### 6. 启动服务
 

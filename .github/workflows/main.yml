@@ -114,6 +114,7 @@ jobs:
           REDIS_NAMESPACE: x2api
           IMGBB_API_KEY: ${{ secrets.IMGBB_API_KEY }}
           NITTER_BROWSER_STORAGE_STATE_B64: ${{ secrets.NITTER_BROWSER_STORAGE_STATE_B64 }}
+          NITTER_BROWSER_STORAGE_STATE_PATH: ${{ runner.temp }}/nitter-browser-state.json
           NITTER_BROWSER_HEADLESS: 'false'
           NITTER_BROWSER_CHANNEL: chrome
           DB_LOCK_MAX_WRITERS: ${{ needs.prepare.outputs.shard_count }}
