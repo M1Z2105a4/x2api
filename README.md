@@ -102,6 +102,9 @@ python3 collector/twitter_monitor.py nitter-browser-auth \
 复用本机会话。GitHub Actions 使用仓库 Secret `NITTER_BROWSER_STORAGE_STATE_B64` 注入同一份
 storage state；会话若与出口 IP 绑定，应改用同一台机器上的自托管运行器。
 
+GitHub Actions 使用 `xvfb-run` 启动有界面的系统 Chrome。不要为 Nitter 验证页注入旧版
+`playwright-stealth`；该插件会破坏 Anubis 脚本并导致验证一直停留在加载页。
+
 ### 6. 启动服务
 
 ```bash
