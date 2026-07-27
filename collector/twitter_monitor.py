@@ -730,6 +730,12 @@ NITTER_BROWSER_CHALLENGE_WAIT_SECONDS = max(
 )
 NITTER_BROWSER_STORAGE_STATE_PATH = os.environ.get("NITTER_BROWSER_STORAGE_STATE_PATH", "").strip()
 NITTER_BROWSER_STORAGE_STATE_B64 = os.environ.get("NITTER_BROWSER_STORAGE_STATE_B64", "").strip()
+NITTER_BROWSER_HEADLESS = os.environ.get("NITTER_BROWSER_HEADLESS", "true").strip().lower() not in {
+    "0",
+    "false",
+    "no",
+}
+NITTER_BROWSER_CHANNEL = os.environ.get("NITTER_BROWSER_CHANNEL", "").strip()
 NITTER_HTTP_USER_AGENT = os.environ.get(
     "NITTER_HTTP_USER_AGENT",
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
@@ -2467,18 +2473,13 @@ def fetch_nitter_with_browser(
             penalize_nitter_instance(runtime_penalties, instance)
         return []
 
-    try:
-        from playwright_stealth import stealth_sync
-    except (ImportError, ModuleNotFoundError) as exc:
-        print(f"[{target}] Playwright stealth 不可用，将使用标准浏览器: {exc}")
-
-        def stealth_sync(_page) -> None:
-            return None
-
     storage_state = load_nitter_browser_storage_state()
     with sync_playwright() as playwright:
+        launch_options: dict[str, object] = {"headless": NITTER_BROWSER_HEADLESS}
+        if NITTER_BROWSER_CHANNEL:
+            launch_options["channel"] = NITTER_BROWSER_CHANNEL
         try:
-            browser = playwright.chromium.launch(headless=True)
+            browser = playwright.chromium.launch(**launch_options)
         except Exception as exc:
             print(f"[{target}] 无法启动 Playwright Chromium: {exc}")
             for instance, _url in playwright_fallbacks:
@@ -2496,7 +2497,6 @@ def fetch_nitter_with_browser(
                 try:
                     context = browser.new_context(**context_options)
                     page = context.new_page()
-                    stealth_sync(page)
                     browser_response = page.goto(url, wait_until="domcontentloaded", timeout=30000)
                     html = page.content()
                     status_code = browser_response.status if browser_response else 0

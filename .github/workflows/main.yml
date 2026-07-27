@@ -114,6 +114,8 @@ jobs:
           REDIS_NAMESPACE: x2api
           IMGBB_API_KEY: ${{ secrets.IMGBB_API_KEY }}
           NITTER_BROWSER_STORAGE_STATE_B64: ${{ secrets.NITTER_BROWSER_STORAGE_STATE_B64 }}
+          NITTER_BROWSER_HEADLESS: 'false'
+          NITTER_BROWSER_CHANNEL: chrome
           DB_LOCK_MAX_WRITERS: ${{ needs.prepare.outputs.shard_count }}
           RETENTION_DAYS: '30'
           MAX_RECORDS: '100000'
@@ -121,7 +123,7 @@ jobs:
           SHARD_COUNT: ${{ needs.prepare.outputs.shard_count }}
         run: |
           echo "Running monitor shard ${SHARD_INDEX}/${SHARD_COUNT}"
-          python twitter_monitor.py monitor \
+          xvfb-run -a python twitter_monitor.py monitor \
             --include-system \
             --shard-index "${SHARD_INDEX}" \
             --shard-count "${SHARD_COUNT}"
