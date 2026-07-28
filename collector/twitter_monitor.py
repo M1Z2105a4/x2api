@@ -49,6 +49,7 @@ try:
     from collector.opensearch_items import get_client as get_opensearch_query_client
     from collector.opensearch_items import get_items_index as get_opensearch_items_index
     from collector.opensearch_items import is_item_compacted as is_pg_item_compacted
+    from collector.opensearch_items import load_target_context
 except ModuleNotFoundError:
     from opensearch_items import compact_item as compact_pg_item_after_sync
     from opensearch_items import fetch_document as fetch_opensearch_document
@@ -59,6 +60,7 @@ except ModuleNotFoundError:
     from opensearch_items import get_client as get_opensearch_query_client
     from opensearch_items import get_items_index as get_opensearch_items_index
     from opensearch_items import is_item_compacted as is_pg_item_compacted
+    from opensearch_items import load_target_context
 
 try:
     from collector.avgood_source import (
@@ -2953,12 +2955,31 @@ def upsert_crawl_state(conn, target_id: str, *, last_guid: str | None, last_erro
         )
 
 
+def tweet_has_media(tweet: dict) -> bool:
+    images = tweet.get("images")
+    has_image = isinstance(images, list) and any(
+        isinstance(image, str) and bool(image.strip()) for image in images
+    )
+    video_url = tweet.get("video_url")
+    has_video = isinstance(video_url, str) and bool(video_url.strip())
+    return has_image or has_video
+
+
 def insert_items(conn, target_row: dict, tweets: list[dict], previous_id: str | None) -> int:
     pending_records = []
     for tweet in tweets:
         if previous_id and tweet["guid"] == previous_id:
             break
         pending_records.append(tweet)
+
+    target_context = load_target_context(conn, str(target_row["id"]))
+    is_sensitive = bool(target_context and target_context.get("is_sensitive"))
+    if is_sensitive:
+        eligible_records = [tweet for tweet in pending_records if tweet_has_media(tweet)]
+        skipped_count = len(pending_records) - len(eligible_records)
+        if skipped_count:
+            print(f"[{format_target_row(target_row)}] 敏感分类中有 {skipped_count} 条记录无图片或视频，已跳过入库")
+        pending_records = eligible_records
 
     if pending_records:
         rewrite_images_with_imgbb(pending_records)
