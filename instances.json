@@ -34,5 +34,9 @@
   {
     "url": "https://nuku.trabun.org",
     "priority": 0
+  },
+  {
+    "url": "https://nitter.privacyredirect.com",
+    "priority": 0
   }
 ]
