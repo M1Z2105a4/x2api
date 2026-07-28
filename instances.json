@@ -34,5 +34,9 @@
   {
     "url": "https://nitter.poast.org",
     "priority": 50
+  },
+  {
+    "url": "https://nuku.trabun.org",
+    "priority": 0
   }
 ]
