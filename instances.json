@@ -16,15 +16,11 @@
     "priority": 0
   },
   {
-    "url": "https://nitter.poast.org",
-    "priority": 50
-  },
-  {
-    "url": "https://nitter.space",
+    "url": "https://nitter.kareem.one",
     "priority": 0
   },
   {
-    "url": "https://nitter.privacyredirect.com",
+    "url": "https://nitter.space",
     "priority": 0
   },
   {
@@ -32,7 +28,11 @@
     "priority": 0
   },
   {
-    "url": "https://nitter.kareem.one",
+    "url": "https://nitter.privacyredirect.com",
     "priority": 0
+  },
+  {
+    "url": "https://lightbrd.com",
+    "priority": 100
   }
 ]
