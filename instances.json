@@ -16,14 +16,6 @@
     "priority": 0
   },
   {
-    "url": "https://nitter.kareem.one",
-    "priority": 0
-  },
-  {
-    "url": "https://nitter.poast.org",
-    "priority": 50
-  },
-  {
     "url": "https://nitter.space",
     "priority": 0
   },
@@ -33,6 +25,10 @@
   },
   {
     "url": "https://nuku.trabun.org",
+    "priority": 0
+  },
+  {
+    "url": "https://nitter.kareem.one",
     "priority": 0
   }
 ]
