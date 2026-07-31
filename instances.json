@@ -16,6 +16,10 @@
     "priority": 0
   },
   {
+    "url": "https://nitter.kareem.one",
+    "priority": 0
+  },
+  {
     "url": "https://nitter.space",
     "priority": 0
   },
@@ -30,5 +34,9 @@
   {
     "url": "https://nitter.privacyredirect.com",
     "priority": 0
+  },
+  {
+    "url": "https://lightbrd.com",
+    "priority": 100
   }
 ]
