@@ -28,6 +28,10 @@
     "priority": 100
   },
   {
+    "url": "https://nitter.privacyredirect.com",
+    "priority": 0
+  },
+  {
     "url": "https://nuku.trabun.org",
     "priority": 0
   },
