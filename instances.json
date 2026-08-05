@@ -1,5 +1,9 @@
 [
   {
+    "url": "https://xcancel.com",
+    "priority": 0
+  },
+  {
     "url": "https://nitter.net",
     "priority": -100
   },
@@ -16,7 +20,11 @@
     "priority": 0
   },
   {
-    "url": "https://xcancel.com",
+    "url": "https://nitter.poast.org",
+    "priority": 50
+  },
+  {
+    "url": "https://nitter.space",
     "priority": 0
   },
   {
@@ -29,14 +37,6 @@
   },
   {
     "url": "https://nuku.trabun.org",
-    "priority": 0
-  },
-  {
-    "url": "https://nitter.poast.org",
-    "priority": 50
-  },
-  {
-    "url": "https://nitter.space",
     "priority": 0
   }
 ]
