@@ -1,11 +1,11 @@
 [
   {
-    "url": "https://xcancel.com",
-    "priority": 0
-  },
-  {
     "url": "https://nitter.net",
     "priority": -100
+  },
+  {
+    "url": "https://xcancel.com",
+    "priority": 0
   },
   {
     "url": "https://nitter.catsarch.com",
