@@ -32,11 +32,11 @@
     "priority": 0
   },
   {
-    "url": "https://lightbrd.com",
-    "priority": 100
-  },
-  {
     "url": "https://nuku.trabun.org",
     "priority": 0
+  },
+  {
+    "url": "https://lightbrd.com",
+    "priority": 100
   }
 ]
