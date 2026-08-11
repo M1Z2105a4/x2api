@@ -8,6 +8,10 @@
     "priority": 0
   },
   {
+    "url": "https://nitter.catsarch.com",
+    "priority": 0
+  },
+  {
     "url": "https://nitter.tiekoetter.com",
     "priority": 0
   },
@@ -28,11 +32,7 @@
     "priority": 0
   },
   {
-    "url": "https://nitter.catsarch.com",
-    "priority": 0
-  },
-  {
-    "url": "https://nuku.trabun.org",
-    "priority": 0
+    "url": "https://lightbrd.com",
+    "priority": 100
   }
 ]
