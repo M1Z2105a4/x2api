@@ -20,6 +20,10 @@
     "priority": 0
   },
   {
+    "url": "https://nitter.poast.org",
+    "priority": 50
+  },
+  {
     "url": "https://nitter.privacyredirect.com",
     "priority": 0
   },
@@ -34,9 +38,5 @@
   {
     "url": "https://lightbrd.com",
     "priority": 100
-  },
-  {
-    "url": "https://nitter.poast.org",
-    "priority": 50
   }
 ]
