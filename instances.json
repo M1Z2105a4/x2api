@@ -8,10 +8,6 @@
     "priority": 0
   },
   {
-    "url": "https://xcancel.com",
-    "priority": 0
-  },
-  {
     "url": "https://nitter.catsarch.com",
     "priority": 0
   },
@@ -20,15 +16,19 @@
     "priority": 0
   },
   {
-    "url": "https://nitter.privacyredirect.com",
+    "url": "https://xcancel.com",
     "priority": 0
   },
   {
-    "url": "https://nuku.trabun.org",
+    "url": "https://nitter.privacyredirect.com",
     "priority": 0
   },
   {
     "url": "https://nitter.poast.org",
     "priority": 50
+  },
+  {
+    "url": "https://nuku.trabun.org",
+    "priority": 0
   }
 ]
