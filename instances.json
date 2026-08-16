@@ -4,6 +4,10 @@
     "priority": -100
   },
   {
+    "url": "https://nitter.tiekoetter.com",
+    "priority": 0
+  },
+  {
     "url": "https://nitter.kareem.one",
     "priority": 0
   },
@@ -16,7 +20,11 @@
     "priority": 0
   },
   {
-    "url": "https://nitter.tiekoetter.com",
+    "url": "https://nitter.poast.org",
+    "priority": 50
+  },
+  {
+    "url": "https://nitter.privacyredirect.com",
     "priority": 0
   },
   {
