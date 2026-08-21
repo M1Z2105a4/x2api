@@ -20,6 +20,10 @@
     "priority": 0
   },
   {
+    "url": "https://lightbrd.com",
+    "priority": 100
+  },
+  {
     "url": "https://nitter.net",
     "priority": -100
   },
