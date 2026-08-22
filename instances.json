@@ -1,14 +1,10 @@
 [
   {
-    "url": "https://nitter.net",
-    "priority": -100
-  },
-  {
-    "url": "https://xcancel.com",
+    "url": "https://nitter.tiekoetter.com",
     "priority": 0
   },
   {
-    "url": "https://nitter.tiekoetter.com",
+    "url": "https://xcancel.com",
     "priority": 0
   },
   {
@@ -20,20 +16,16 @@
     "priority": 0
   },
   {
+    "url": "https://nitter.net",
+    "priority": -100
+  },
+  {
     "url": "https://nitter.space",
     "priority": 0
   },
   {
     "url": "https://lightbrd.com",
     "priority": 100
-  },
-  {
-    "url": "https://nitter.poast.org",
-    "priority": 50
-  },
-  {
-    "url": "https://nitter.privacyredirect.com",
-    "priority": 0
   },
   {
     "url": "https://nuku.trabun.org",
