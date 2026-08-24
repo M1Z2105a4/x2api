@@ -1,27 +1,23 @@
 [
   {
-    "url": "https://nitter.tiekoetter.com",
-    "priority": 0
-  },
-  {
     "url": "https://nitter.net",
     "priority": -100
-  },
-  {
-    "url": "https://xcancel.com",
-    "priority": 0
   },
   {
     "url": "https://nitter.catsarch.com",
     "priority": 0
   },
   {
-    "url": "https://nitter.kareem.one",
+    "url": "https://nitter.tiekoetter.com",
     "priority": 0
   },
   {
-    "url": "https://nitter.poast.org",
-    "priority": 50
+    "url": "https://xcancel.com",
+    "priority": 0
+  },
+  {
+    "url": "https://nitter.kareem.one",
+    "priority": 0
   },
   {
     "url": "https://nitter.space",
@@ -32,7 +28,7 @@
     "priority": 100
   },
   {
-    "url": "https://nuku.trabun.org",
-    "priority": 0
+    "url": "https://nitter.poast.org",
+    "priority": 50
   }
 ]
