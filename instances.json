@@ -10,5 +10,13 @@
   {
     "url": "https://nitter.xitter.cc",
     "priority": 0
+  },
+  {
+    "url": "https://nitter.meowing.monster",
+    "priority": 0
+  },
+  {
+    "url": "https://shitter.thepixora.com",
+    "priority": 0
   }
 ]
