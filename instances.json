@@ -8,11 +8,7 @@
     "priority": 0
   },
   {
-    "url": "https://nitter.jaydenha.uk",
-    "priority": 0
-  },
-  {
-    "url": "https://nitter.meowing.monster",
+    "url": "https://nitter.xitter.cc",
     "priority": 0
   },
   {
@@ -20,7 +16,11 @@
     "priority": 0
   },
   {
-    "url": "https://nitter.xitter.cc",
+    "url": "https://nitter.meowing.monster",
+    "priority": 0
+  },
+  {
+    "url": "https://nitter.jaydenha.uk",
     "priority": 0
   }
 ]
