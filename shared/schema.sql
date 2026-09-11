@@ -110,6 +110,38 @@ CREATE TABLE IF NOT EXISTS subscriptions (
     UNIQUE (client_id, target_id)
 );
 
+CREATE TABLE IF NOT EXISTS feed_block_rules (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    client_id UUID NOT NULL REFERENCES clients(id) ON DELETE CASCADE,
+    rule_type TEXT NOT NULL,
+    platform TEXT,
+    value TEXT NOT NULL,
+    normalized_value TEXT NOT NULL,
+    match_mode TEXT NOT NULL DEFAULT 'phrase',
+    label TEXT,
+    enabled BOOLEAN NOT NULL DEFAULT TRUE,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    CONSTRAINT feed_block_rules_type_check CHECK (rule_type IN ('user', 'keyword')),
+    CONSTRAINT feed_block_rules_mode_check CHECK (match_mode IN ('exact', 'phrase')),
+    UNIQUE (client_id, rule_type, platform, normalized_value)
+);
+DELETE FROM feed_block_rules duplicate
+USING feed_block_rules keeper
+WHERE duplicate.id > keeper.id
+  AND duplicate.client_id = keeper.client_id
+  AND duplicate.rule_type = keeper.rule_type
+  AND duplicate.normalized_value = keeper.normalized_value
+  AND LOWER(BTRIM(COALESCE(duplicate.platform, ''))) = LOWER(BTRIM(COALESCE(keeper.platform, '')));
+CREATE UNIQUE INDEX IF NOT EXISTS feed_block_rules_unique_normalized_idx
+    ON feed_block_rules (
+        client_id,
+        rule_type,
+        LOWER(BTRIM(COALESCE(platform, ''))),
+        normalized_value
+    );
+CREATE INDEX IF NOT EXISTS feed_block_rules_client_idx ON feed_block_rules(client_id, enabled);
+
 CREATE TABLE IF NOT EXISTS crawl_state (
     target_id UUID PRIMARY KEY REFERENCES targets(id) ON DELETE CASCADE,
     last_guid TEXT,

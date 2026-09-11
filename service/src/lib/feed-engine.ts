@@ -16,6 +16,7 @@ import {
   type VideoFeedQuery,
 } from "@/lib/video-feed-service";
 import { resolveAuthorPresentation, type AuthorPresentation } from "@/lib/author-presentation";
+import { buildBlockRuleMustNotClauses, type FeedBlockRule } from "@/lib/feed-block-rules";
 
 type OpenSearchJson = Record<string, unknown>;
 
@@ -855,6 +856,7 @@ function buildFeedQuery(input: {
   keyword: string | null;
   profile: UserFeedProfile;
   mode: "personalized" | "explore";
+  blockRules?: FeedBlockRule[];
 }) {
   const filter: unknown[] = [
     { term: { item_role: "video_variant" } },
@@ -887,6 +889,8 @@ function buildFeedQuery(input: {
           { wildcard: { title: { value: wildcardKeyword } } },
           { wildcard: { content: { value: wildcardKeyword } } },
           { wildcard: { author: { value: wildcardKeyword } } },
+          { match_phrase: { fullname: input.keyword } },
+          { wildcard: { fullname: { value: wildcardKeyword } } },
         ],
         minimum_should_match: 1,
       },
@@ -918,6 +922,7 @@ function buildFeedQuery(input: {
   if (seenVideoKeyTerms) {
     mustNot.push(seenVideoKeyTerms);
   }
+  mustNot.push(...buildBlockRuleMustNotClauses(input.blockRules ?? []));
 
   const functions = rankingFunctions(input.profile, input.mode);
 
@@ -1057,6 +1062,16 @@ export async function listVideoFeedFromOpenSearch(query: VideoFeedQuery) {
     getUserFeedProfile(query.clientId),
     normalizeCategoryFilters(normalizedCategories),
   ]);
+  const blockRows = (await getSql()`
+    SELECT
+      rule_type AS "ruleType",
+      normalized_value AS "normalizedValue",
+      match_mode AS "matchMode",
+      platform
+    FROM feed_block_rules
+    WHERE client_id = ${query.clientId}
+      AND enabled = TRUE
+  `).rows as FeedBlockRule[];
   const seenIds = combineSeenValues(recentSeenIdentities.ids, cursorSeenIds);
   const seenGuids = combineSeenValues(recentSeenIdentities.guids, cursorSeenGuids);
   const seenVideoKeys = combineSeenVideoKeys(recentSeenIdentities.videoKeys, cursorSeenVideoKeys);
@@ -1073,6 +1088,7 @@ export async function listVideoFeedFromOpenSearch(query: VideoFeedQuery) {
     tagFilters: normalizedTags,
     keyword,
     profile,
+    blockRules: blockRows,
   };
   const personalizedBody = buildFeedQuery({
     ...baseInput,
@@ -1130,5 +1146,6 @@ export async function listVideoFeedFromOpenSearch(query: VideoFeedQuery) {
 }
 
 export const __testables = {
+  buildFeedQuery,
   normalizeRecentSeenIdentities,
 };

@@ -112,3 +112,46 @@ test("buildItemsQuery merges subscriptions with item public pool when sourceScop
     { bool: { filter: [{ terms: { target_id: ["target-1", "target-public"] } }] } },
   ]);
 });
+
+test("buildItemsQuery excludes enabled block rules from item results", () => {
+  const query = __testables.buildItemsQuery({
+    targetIds: ["target-1"],
+    publicTargetIds: [],
+    size: 10,
+    keyword: null,
+    targetFilter: null,
+    tagFilters: [],
+    categoryFilters: [],
+    sinceFilter: null,
+    sourceScope: "user",
+    cursor: null,
+    blockRules: [
+      {
+        ruleType: "keyword",
+        normalizedValue: "spoiler",
+        matchMode: "phrase",
+        platform: null,
+      },
+    ],
+  }) as {
+    query: {
+      bool: {
+        must_not: Array<{ bool: { should: unknown[] } }>;
+      };
+    };
+  };
+
+  assert.equal(query.query.bool.must_not.length, 1);
+  assert.deepEqual(query.query.bool.must_not[0], {
+    bool: {
+      should: [
+        { wildcard: { title: { value: "*spoiler*" } } },
+        { wildcard: { caption: { value: "*spoiler*" } } },
+        { wildcard: { content: { value: "*spoiler*" } } },
+        { wildcard: { raw_content: { value: "*spoiler*" } } },
+        { wildcard: { translated_content: { value: "*spoiler*" } } },
+      ],
+      minimum_should_match: 1,
+    },
+  });
+});
