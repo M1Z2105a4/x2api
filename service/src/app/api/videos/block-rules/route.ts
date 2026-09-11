@@ -42,3 +42,15 @@ export async function DELETE(request: Request) {
     return jsonOk({ deleted: true });
   } catch (error) { return jsonError(error instanceof Error ? error.message : "Failed to delete block rule.", 500); }
 }
+
+export async function PATCH(request: Request) {
+  try {
+    const client = await requireClient();
+    const body = await request.json() as { id?: string; enabled?: boolean };
+    if (!body.id || typeof body.enabled !== "boolean") return jsonError("id and enabled are required.", 400);
+    const sql = getSql();
+    const result = await sql`UPDATE feed_block_rules SET enabled = ${body.enabled}, updated_at = NOW() WHERE id = ${body.id} AND client_id = ${client.id} RETURNING id::text, enabled`;
+    if (result.rows.length === 0) return jsonError("Rule not found.", 404);
+    return jsonOk({ rule: result.rows[0] });
+  } catch (error) { return jsonError(error instanceof Error ? error.message : "Failed to update block rule.", 500); }
+}
