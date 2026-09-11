@@ -2370,12 +2370,15 @@ def enrich_nitter_rss_tweets(
     tweets: list[dict],
     stop_at_guid: str | None = None,
 ) -> list[dict]:
+    is_search = target.startswith("search:")
     enriched_count = 0
     consecutive_failures = 0
     for tweet in tweets:
         if stop_at_guid and tweet["guid"] == stop_at_guid:
             break
-        if not tweet.get("video_poster_url") or tweet.get("video_url"):
+        needs_author_identity = is_search and not tweet.get("fullname")
+        needs_video_enrichment = bool(tweet.get("video_poster_url")) and not tweet.get("video_url")
+        if not needs_author_identity and not needs_video_enrichment:
             continue
         if enriched_count >= NITTER_RSS_DETAIL_LIMIT or consecutive_failures >= 2:
             break
