@@ -11,8 +11,8 @@ function escapeOpenSearchWildcard(value: string) {
 
 function textFieldsForRule(ruleType: string) {
   return ruleType === "user"
-    ? ["author", "fullname", "display_author", "display_handle"]
-    : ["title", "caption", "content", "raw_content", "translated_content"];
+    ? ["author", "fullname"]
+    : ["title", "content", "raw_content", "translated_content"];
 }
 
 function platformClause(platform: string) {
@@ -21,7 +21,6 @@ function platformClause(platform: string) {
     bool: {
       should: [
         { wildcard: { source: { value } } },
-        { wildcard: { author_profile_platform: { value } } },
       ],
       minimum_should_match: 1,
     },

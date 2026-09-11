@@ -27,7 +27,7 @@ export async function POST(request: Request) {
     const platform = body.platform?.trim().toLocaleLowerCase() || null;
     const normalized = value.toLocaleLowerCase();
     const sql = getSql();
-    const result = await sql`INSERT INTO feed_block_rules (client_id, rule_type, platform, value, normalized_value, match_mode, label) VALUES (${client.id}, ${type}, ${platform}, ${value}, ${normalized}, ${body.matchMode === "exact" ? "exact" : "phrase"}, ${body.label?.trim() || null}) ON CONFLICT (client_id, rule_type, (LOWER(BTRIM(COALESCE(platform, '')))), normalized_value) DO UPDATE SET enabled = TRUE, value = EXCLUDED.value, label = EXCLUDED.label, updated_at = NOW() RETURNING id::text, rule_type AS "ruleType", NULLIF(platform, '') AS platform, value, normalized_value AS "normalizedValue", match_mode AS "matchMode", label, enabled`;
+    const result = await sql`INSERT INTO feed_block_rules (client_id, rule_type, platform, value, normalized_value, match_mode, label) VALUES (${client.id}, ${type}, ${platform}, ${value}, ${normalized}, ${body.matchMode === "exact" ? "exact" : "phrase"}, ${body.label?.trim() || null}) ON CONFLICT (client_id, rule_type, platform, normalized_value) DO UPDATE SET enabled = TRUE, value = EXCLUDED.value, label = EXCLUDED.label, updated_at = NOW() RETURNING id::text, rule_type AS "ruleType", NULLIF(platform, '') AS platform, value, normalized_value AS "normalizedValue", match_mode AS "matchMode", label, enabled`;
     return jsonOk({ rule: result.rows[0] }, { status: 201 });
   } catch (error) { return jsonError(error instanceof Error ? error.message : "Failed to create block rule.", 500); }
 }
