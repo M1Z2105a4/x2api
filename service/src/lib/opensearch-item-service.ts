@@ -6,6 +6,7 @@ import { buildCursorPage, decodeCursor, normalizeLimit } from "@/lib/pagination"
 import { cachedJson } from "@/lib/redis-cache";
 import { asRows } from "@/lib/sql-result";
 import type { TargetSource } from "@/lib/targets";
+import { buildBlockRuleMustNotClauses, type FeedBlockRule } from "@/lib/feed-block-rules";
 
 type ItemQuery = {
   clientId: string;
@@ -192,6 +193,20 @@ async function getItemPublicPoolTargetIds() {
   });
 }
 
+async function getEnabledBlockRules(clientId: string): Promise<FeedBlockRule[]> {
+  const sql = getSql();
+  return asRows<FeedBlockRule>(await sql`
+    SELECT
+      rule_type AS "ruleType",
+      normalized_value AS "normalizedValue",
+      match_mode AS "matchMode",
+      platform
+    FROM feed_block_rules
+    WHERE client_id = ${clientId}
+      AND enabled = TRUE
+  `);
+}
+
 async function getFeedClient(feedToken: string) {
   const sql = getSql();
   const rows = asRows<{ clientId: string }>(await sql`
@@ -334,6 +349,7 @@ function buildItemsQuery(input: {
   sinceFilter: string | null;
   cursor: ItemCursor | null;
   sourceScope: ItemQuery["sourceScope"];
+  blockRules?: FeedBlockRule[];
 }) {
   const filter: unknown[] = [
     { range: { expires_at: { gt: "now" } } },
@@ -394,12 +410,14 @@ function buildItemsQuery(input: {
     });
   }
 
+  const blockRules = buildBlockRuleMustNotClauses(input.blockRules ?? []);
   return {
     size: input.size,
     track_total_hits: false,
     query: {
       bool: {
         filter,
+        ...(blockRules.length > 0 ? { must_not: blockRules } : {}),
       },
     },
     sort: [
@@ -447,6 +465,7 @@ async function queryItemsFromOpenSearch(input: {
   categoryFilters: string[];
   sinceFilter: string | null;
   sourceScope: ItemQuery["sourceScope"];
+  blockRules: FeedBlockRule[];
 }) {
   const client = getOpenSearchClient();
   if (!client) {
@@ -491,6 +510,7 @@ export async function listItemsFromOpenSearch(query: ItemQuery): Promise<OpenSea
   const categoryFilters = await normalizeCategoryFilters(normalizedCategories);
   const targetIds = await getSubscribedTargetIds(query.clientId);
   const publicTargetIds = await getItemPublicPoolTargetIds();
+  const blockRules = await getEnabledBlockRules(query.clientId);
   const rows = await queryItemsFromOpenSearch({
     targetIds,
     publicTargetIds,
@@ -502,6 +522,7 @@ export async function listItemsFromOpenSearch(query: ItemQuery): Promise<OpenSea
     categoryFilters,
     sinceFilter: query.since ? new Date(query.since).toISOString() : null,
     sourceScope: query.sourceScope ?? "all",
+    blockRules,
   });
   return toResult(rows, limit);
 }
@@ -514,6 +535,7 @@ export async function listItemsByFeedTokenFromOpenSearch(query: FeedTokenQuery) 
   const limit = normalizeLimit(query.limit, { defaultLimit: 50, maxLimit: 100 });
   const targetIds = await getSubscribedTargetIds(client.clientId);
   const publicTargetIds = await getItemPublicPoolTargetIds();
+  const blockRules = await getEnabledBlockRules(client.clientId);
   const rows = await queryItemsFromOpenSearch({
     targetIds,
     publicTargetIds,
@@ -525,6 +547,7 @@ export async function listItemsByFeedTokenFromOpenSearch(query: FeedTokenQuery) 
     categoryFilters: [],
     sinceFilter: null,
     sourceScope: "all",
+    blockRules,
   });
   return rows.slice(0, limit).map(({ sortTime: _sortTime, ...item }) => ({
     ...item,

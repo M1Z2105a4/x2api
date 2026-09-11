@@ -11,7 +11,7 @@ test("filterExistingItemIds returns only ids that still exist in pg", async () =
     return Promise.resolve({
       rows: [{ id: "item-1" }, { id: "item-3" }],
     });
-  }) as SqlFunction;
+  }) as unknown as SqlFunction;
 
   const visible = await filterExistingItemIds(["item-1", "item-2", "item-3", "item-1"], fakeSql);
   assert.deepEqual([...visible].sort(), ["item-1", "item-3"]);

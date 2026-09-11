@@ -4810,6 +4810,11 @@ def query_records_from_opensearch(
                         {"wildcard": {"raw_content": {"value": f"*{wildcard_keyword}*"}}},
                         {"wildcard": {"translated_content": {"value": f"*{wildcard_keyword}*"}}},
                         {"wildcard": {"author": {"value": f"*{wildcard_keyword}*"}}},
+                        # `fullname` is the author's display name.  It is
+                        # populated by the collectors alongside `author`, so
+                        # include it in ordinary feed searches as well.
+                        {"match_phrase": {"fullname": normalized_keyword}},
+                        {"wildcard": {"fullname": {"value": f"*{wildcard_keyword}*"}}},
                     ],
                     "minimum_should_match": 1,
                 }
