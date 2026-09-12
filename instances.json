@@ -8,10 +8,6 @@
     "priority": 0
   },
   {
-    "url": "https://nitter.meowing.monster",
-    "priority": 0
-  },
-  {
     "url": "https://nitter.miningtcup.me",
     "priority": 0
   },
@@ -25,6 +21,10 @@
   },
   {
     "url": "https://nitter.xitter.cc",
+    "priority": 0
+  },
+  {
+    "url": "https://nitter.meowing.monster",
     "priority": 0
   },
   {
