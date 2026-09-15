@@ -16,11 +16,15 @@
     "priority": 0
   },
   {
+    "url": "https://nitter.netbub.com",
+    "priority": 0
+  },
+  {
     "url": "https://nitter.click",
     "priority": 0
   },
   {
-    "url": "https://nitter.netbub.com",
+    "url": "https://shitter.thepixora.com",
     "priority": 0
   }
 ]
