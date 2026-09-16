@@ -1,14 +1,10 @@
 [
   {
-    "url": "https://nitter.kareem.one",
-    "priority": 0
-  },
-  {
     "url": "https://nitter.miningtcup.me",
     "priority": 0
   },
   {
-    "url": "https://shitter.thepixora.com",
+    "url": "https://nitter.meowing.monster",
     "priority": 0
   },
   {
@@ -28,7 +24,7 @@
     "priority": 0
   },
   {
-    "url": "https://nitter.meowing.monster",
+    "url": "https://shitter.thepixora.com",
     "priority": 0
   }
 ]
