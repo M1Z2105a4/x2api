@@ -1,14 +1,6 @@
 [
   {
-    "url": "https://nitter.netbub.com",
-    "priority": 0
-  },
-  {
     "url": "https://nitter.miningtcup.me",
-    "priority": 0
-  },
-  {
-    "url": "https://nitter.click",
     "priority": 0
   },
   {
@@ -16,11 +8,15 @@
     "priority": 0
   },
   {
+    "url": "https://nitter.netbub.com",
+    "priority": 0
+  },
+  {
     "url": "https://shitter.thepixora.com",
     "priority": 0
   },
   {
-    "url": "https://nitter.jaydenha.uk",
+    "url": "https://nitter.click",
     "priority": 0
   }
 ]
