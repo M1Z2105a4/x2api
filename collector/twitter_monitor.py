@@ -6377,6 +6377,8 @@ def command_monitor_pinse(args) -> int:
         print(json.dumps(stats, ensure_ascii=False, indent=2, default=str)); return 0
     with get_db_connection() as conn:
         stats = monitor_pinse_site(conn, base_url=base_url, max_pages=max(1, min(args.max_pages, PINSE_MAX_PAGES)), retention_hours=max(1, retention_hours), public_pool=not args.private_pool, dry_run=args.dry_run)
+        if not args.dry_run and stats.get("pages", 0) == 0:
+            raise RuntimeError("91PinSe returned no list pages; refusing to report a successful empty crawl.")
         if args.dry_run: conn.rollback()
         else:
             stats = finalize_monitor_source_run(conn, stats, source=PINSE_SOURCE, compact_after_hours=1)

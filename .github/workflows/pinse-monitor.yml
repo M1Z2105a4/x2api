@@ -17,7 +17,7 @@ on:
       base_url:
         description: '91PinSe 站点入口'
         required: false
-        default: 'https://91pinse.com/v/'
+        default: 'https://www.91pinse.com/v/'
       max_pages:
         description: '单次最多分页数（最多 10 页）'
         required: false
@@ -46,6 +46,6 @@ jobs:
           OPENSEARCH_URL: ${{ secrets.OPENSEARCH_URL }}
           REDIS_URL: ${{ secrets.REDIS_URL }}
           REDIS_NAMESPACE: x2api
-          BASE_URL: ${{ inputs.base_url || vars.PINSE_BASE_URL || 'https://91pinse.com/v/' }}
+          BASE_URL: ${{ inputs.base_url || vars.PINSE_BASE_URL || 'https://www.91pinse.com/v/' }}
           MAX_PAGES: ${{ inputs.max_pages || vars.PINSE_MONITOR_MAX_PAGES || '10' }}
         run: python twitter_monitor.py monitor-pinse --base-url "${BASE_URL}" --max-pages "${MAX_PAGES}" --retention-hours 84
