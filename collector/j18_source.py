@@ -181,7 +181,7 @@ def detail_url(base_url: str, video_id: str) -> str:
 
 
 def detail_id_from_url(url: str) -> str | None:
-    match = re.search(r"/v/(\d+)/?$", urlparse(url).path)
+    match = re.search(r"/v/(\d+)(?:/|$)", urlparse(url).path)
     return match.group(1) if match else None
 
 

@@ -199,6 +199,8 @@ const VIDEO_SOURCE_VALUES = [
   "91porn",
   "91rb",
   "badnews",
+  "pornhub",
+  "pinse",
   "bdrq",
   "avgood",
   "705hs",
@@ -266,6 +268,8 @@ function videoKeyExpression(alias: "i" | "watched_item"): QueryChunk {
       WHEN ${alias}.metadata->>'porn91_video_id' IS NOT NULL THEN '91porn:' || (${alias}.metadata->>'porn91_video_id')
       WHEN ${alias}.metadata->>'rb91_video_id' IS NOT NULL THEN '91rb:' || (${alias}.metadata->>'rb91_video_id')
       WHEN ${alias}.metadata->>'badnews_video_id' IS NOT NULL THEN 'badnews:' || (${alias}.metadata->>'badnews_video_id')
+      WHEN ${alias}.metadata->>'pornhub_video_id' IS NOT NULL THEN 'pornhub:' || (${alias}.metadata->>'pornhub_video_id')
+      WHEN ${alias}.metadata->>'pinse_video_id' IS NOT NULL THEN 'pinse:' || (${alias}.metadata->>'pinse_video_id')
       WHEN ${alias}.metadata->>'bdrq_video_id' IS NOT NULL THEN 'bdrq:' || (${alias}.metadata->>'bdrq_video_id')
       WHEN ${alias}.metadata->>'avgood_video_id' IS NOT NULL THEN 'avgood:' || (${alias}.metadata->>'avgood_video_id')
       WHEN ${alias}.metadata->>'hs705_video_id' IS NOT NULL THEN '705hs:' || (${alias}.metadata->>'hs705_video_id')
@@ -290,6 +294,8 @@ function videoKeyExpression(alias: "i" | "watched_item"): QueryChunk {
       WHEN ${alias}.guid LIKE '91porn:%' THEN ${alias}.guid
       WHEN ${alias}.guid LIKE '91rb:%' THEN ${alias}.guid
       WHEN ${alias}.guid LIKE 'badnews:%' THEN ${alias}.guid
+      WHEN ${alias}.guid LIKE 'pornhub:%' THEN ${alias}.guid
+      WHEN ${alias}.guid LIKE 'pinse:%' THEN ${alias}.guid
       WHEN ${alias}.guid LIKE 'bdrq:%' THEN ${alias}.guid
       WHEN ${alias}.guid LIKE 'avgood:%' THEN ${alias}.guid
       WHEN ${alias}.guid LIKE '705hs:%' THEN ${alias}.guid
