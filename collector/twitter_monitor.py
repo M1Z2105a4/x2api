@@ -91,6 +91,26 @@ try:
         refresh_playback_urls as refresh_badnews_playback_urls,
         upsert_video_item as upsert_badnews_video_item,
     )
+    from collector.pornhub_source import (
+        PORNHUB_CRITICAL_WINDOW_MINUTES,
+        PORNHUB_DEFAULT_BASE_URL,
+        PORNHUB_KIND,
+        PORNHUB_MAX_PAGES,
+        PORNHUB_REFRESH_WINDOW_MINUTES,
+        PORNHUB_RETENTION_HOURS,
+        PORNHUB_SITE_NAME,
+        PORNHUB_SOURCE,
+        is_pornhub_target_url,
+        monitor_site as monitor_pornhub_site,
+        normalize_pornhub_target_value,
+        refresh_playback_urls as refresh_pornhub_playback_urls,
+    )
+    from collector.pinse_source import (
+        PINSE_CRITICAL_WINDOW_MINUTES, PINSE_DEFAULT_BASE_URL, PINSE_KIND, PINSE_MAX_PAGES,
+        PINSE_REFRESH_WINDOW_MINUTES, PINSE_RETENTION_HOURS, PINSE_SITE_NAME, PINSE_SOURCE,
+        is_pinse_target_url, monitor_site as monitor_pinse_site,
+        normalize_pinse_target_value, refresh_playback_urls as refresh_pinse_playback_urls,
+    )
     from collector.baoliao51_refresh import refresh_playback_urls as refresh_baoliao51_playback_urls
     from collector.baoliao51_source import (
         BAOLIAO51_CRITICAL_WINDOW_MINUTES,
@@ -374,6 +394,26 @@ except ModuleNotFoundError:
         normalize_badnews_target_value,
         refresh_playback_urls as refresh_badnews_playback_urls,
         upsert_video_item as upsert_badnews_video_item,
+    )
+    from pornhub_source import (
+        PORNHUB_CRITICAL_WINDOW_MINUTES,
+        PORNHUB_DEFAULT_BASE_URL,
+        PORNHUB_KIND,
+        PORNHUB_MAX_PAGES,
+        PORNHUB_REFRESH_WINDOW_MINUTES,
+        PORNHUB_RETENTION_HOURS,
+        PORNHUB_SITE_NAME,
+        PORNHUB_SOURCE,
+        is_pornhub_target_url,
+        monitor_site as monitor_pornhub_site,
+        normalize_pornhub_target_value,
+        refresh_playback_urls as refresh_pornhub_playback_urls,
+    )
+    from pinse_source import (
+        PINSE_CRITICAL_WINDOW_MINUTES, PINSE_DEFAULT_BASE_URL, PINSE_KIND, PINSE_MAX_PAGES,
+        PINSE_REFRESH_WINDOW_MINUTES, PINSE_RETENTION_HOURS, PINSE_SITE_NAME, PINSE_SOURCE,
+        is_pinse_target_url, monitor_site as monitor_pinse_site,
+        normalize_pinse_target_value, refresh_playback_urls as refresh_pinse_playback_urls,
     )
     from baoliao51_refresh import refresh_playback_urls as refresh_baoliao51_playback_urls
     from baoliao51_source import (
@@ -678,6 +718,8 @@ DETAIL_LINK_PROFILE_SOURCES = {
     DADAAFA_SOURCE,
     MTIF_SOURCE,
     BADNEWS_SOURCE,
+    PORNHUB_SOURCE,
+    PINSE_SOURCE,
     TIKPORN_SOURCE,
     PORNA91_SOURCE,
     PORN91_SOURCE,
@@ -1196,6 +1238,22 @@ def parse_target_value(target: str) -> dict[str, str]:
         value = normalize_badnews_target_value(normalized)
         return {"source": BADNEWS_SOURCE, "kind": BADNEWS_KIND, "value": value, "normalized_value": normalize_site_target_key(value)}
 
+    if normalized.lower().startswith("pornhub:"):
+        value = normalize_pornhub_target_value(normalized[len("pornhub:") :].strip())
+        return {"source": PORNHUB_SOURCE, "kind": PORNHUB_KIND, "value": value, "normalized_value": normalize_site_target_key(value)}
+
+    if is_pornhub_target_url(normalized):
+        value = normalize_pornhub_target_value(normalized)
+        return {"source": PORNHUB_SOURCE, "kind": PORNHUB_KIND, "value": value, "normalized_value": normalize_site_target_key(value)}
+
+    if normalized.lower().startswith("pinse:"):
+        value = normalize_pinse_target_value(normalized[len("pinse:") :].strip())
+        return {"source": PINSE_SOURCE, "kind": PINSE_KIND, "value": value, "normalized_value": normalize_site_target_key(value)}
+
+    if is_pinse_target_url(normalized):
+        value = normalize_pinse_target_value(normalized)
+        return {"source": PINSE_SOURCE, "kind": PINSE_KIND, "value": value, "normalized_value": normalize_site_target_key(value)}
+
     if normalized.lower().startswith("91porn:"):
         value = normalize_91porn_target_value(normalized[len("91porn:") :].strip())
         return {"source": PORN91_SOURCE, "kind": PORN91_KIND, "value": value, "normalized_value": normalize_site_target_key(value)}
@@ -1393,6 +1451,10 @@ def format_target_row(target_row: dict) -> str:
         return f"1mtif:{target_row['value']}"
     if target_row.get("source") == BADNEWS_SOURCE:
         return f"badnews:{target_row['value']}"
+    if target_row.get("source") == PORNHUB_SOURCE:
+        return f"pornhub:{target_row['value']}"
+    if target_row.get("source") == PINSE_SOURCE:
+        return f"pinse:{target_row['value']}"
     if target_row.get("source") == PORN91_SOURCE:
         return f"91porn:{target_row['value']}"
     if target_row.get("source") == RB91_SOURCE:
@@ -1469,6 +1531,10 @@ def normalized_presentation_source(source: str | None) -> str:
         return TIKPORN_SOURCE
     if source_key in {"badnews", "bad.news"}:
         return BADNEWS_SOURCE
+    if source_key in {"pornhub", "pornhub.com", "cn.pornhub.com"}:
+        return PORNHUB_SOURCE
+    if source_key in {"pinse", "91pinse", "91pinse.com"}:
+        return PINSE_SOURCE
     if source_key in {"bdrq", "bdrq45", "bdrq45.cc", "bdrq12", "bdrq12.cc"}:
         return BDRQ_SOURCE
     if source_key in {"91porn", "91porn.com"}:
@@ -1505,6 +1571,8 @@ def source_display_name(source: str | None) -> str:
         MTIF_SOURCE: MTIF_SITE_NAME,
         TIKPORN_SOURCE: TIKPORN_SITE_NAME,
         BADNEWS_SOURCE: BADNEWS_SITE_NAME,
+        PORNHUB_SOURCE: PORNHUB_SITE_NAME,
+        PINSE_SOURCE: PINSE_SITE_NAME,
         BDRQ_SOURCE: BDRQ_SITE_NAME,
         PORN91_SOURCE: PORN91_SITE_NAME,
         RB91_SOURCE: RB91_SITE_NAME,
@@ -4614,7 +4682,7 @@ def cleanup_records(conn, retention_days: int, max_records: int) -> dict[str, in
             DELETE FROM items i
             USING targets t
             WHERE t.id = i.target_id
-              AND t.source IN ('youtube', 'heiliao', 'cg91', 'baoliao51', 'douyin', '18mh', 'rou', 'dadaafa', '1mtif', 'tikporn', 'badnews', 'bdrq', '91porna', '91porn', '91rb', '18j', 'avgood', '705hs', 'xxxtik', 'affair', 'attach', 'caoliu', 'dirtyship', 'influencersgonewild', 'missav')
+              AND t.source IN ('youtube', 'heiliao', 'cg91', 'baoliao51', 'douyin', '18mh', 'rou', 'dadaafa', '1mtif', 'tikporn', 'badnews', 'pornhub', 'pinse', 'bdrq', '91porna', '91porn', '91rb', '18j', 'avgood', '705hs', 'xxxtik', 'affair', 'attach', 'caoliu', 'dirtyship', 'influencersgonewild', 'missav')
               AND i.expires_at <= NOW()
             RETURNING i.id::text AS id
             """
@@ -4740,6 +4808,8 @@ def build_opensearch_target_filter(target: str | None):
         MTIF_SOURCE,
         TIKPORN_SOURCE,
         BADNEWS_SOURCE,
+        PORNHUB_SOURCE,
+        PINSE_SOURCE,
         BDRQ_SOURCE,
         PORNA91_SOURCE,
         PORN91_SOURCE,
@@ -6270,6 +6340,59 @@ def command_refresh_badnews_playback_urls(args) -> int:
     return 0
 
 
+def command_monitor_pornhub(args) -> int:
+    base_url = args.base_url or PORNHUB_DEFAULT_BASE_URL
+    retention_hours = args.retention_hours if args.retention_hours is not None else PORNHUB_RETENTION_HOURS
+    if args.retention_days is not None:
+        retention_hours = args.retention_days * 24
+    max_records = args.max_records if args.max_records is not None else DEFAULT_MAX_RECORDS
+    if args.dry_run and not DATABASE_URL:
+        stats = monitor_pornhub_site(None, base_url=base_url, max_pages=max(1, min(args.max_pages, PORNHUB_MAX_PAGES)), retention_hours=max(1, retention_hours), public_pool=not args.private_pool, dry_run=True)
+        print(json.dumps(stats, ensure_ascii=False, indent=2, default=str)); return 0
+    with get_db_connection() as conn:
+        stats = monitor_pornhub_site(conn, base_url=base_url, max_pages=max(1, min(args.max_pages, PORNHUB_MAX_PAGES)), retention_hours=max(1, retention_hours), public_pool=not args.private_pool, dry_run=args.dry_run)
+        if args.dry_run: conn.rollback()
+        else:
+            stats = finalize_monitor_source_run(conn, stats, source=PORNHUB_SOURCE, compact_after_hours=1)
+            if not args.skip_cleanup:
+                stats = {**stats, "cleanup": cleanup_records(conn, max(1, (retention_hours + 23) // 24), max_records)}
+                conn.commit()
+    print(json.dumps(stats, ensure_ascii=False, indent=2, default=str)); return 0
+
+
+def command_refresh_pornhub_playback_urls(args) -> int:
+    with get_db_connection() as conn:
+        stats = refresh_pornhub_playback_urls(conn, limit=max(1, args.limit), refresh_window_minutes=max(1, args.refresh_window_minutes), critical_window_minutes=max(1, args.critical_window_minutes)); conn.commit()
+    print(json.dumps(stats, ensure_ascii=False, indent=2)); return 0
+
+
+def command_monitor_pinse(args) -> int:
+    base_url = args.base_url or PINSE_DEFAULT_BASE_URL
+    retention_hours = args.retention_hours if args.retention_hours is not None else PINSE_RETENTION_HOURS
+    if args.retention_days is not None:
+        retention_hours = args.retention_days * 24
+    max_records = args.max_records if args.max_records is not None else DEFAULT_MAX_RECORDS
+    if args.dry_run and not DATABASE_URL:
+        stats = monitor_pinse_site(None, base_url=base_url, max_pages=max(1, min(args.max_pages, PINSE_MAX_PAGES)), retention_hours=max(1, retention_hours), public_pool=not args.private_pool, dry_run=True)
+        print(json.dumps(stats, ensure_ascii=False, indent=2, default=str)); return 0
+    with get_db_connection() as conn:
+        stats = monitor_pinse_site(conn, base_url=base_url, max_pages=max(1, min(args.max_pages, PINSE_MAX_PAGES)), retention_hours=max(1, retention_hours), public_pool=not args.private_pool, dry_run=args.dry_run)
+        if not args.dry_run and stats.get("pages", 0) == 0:
+            raise RuntimeError("91PinSe returned no list pages; refusing to report a successful empty crawl.")
+        if args.dry_run: conn.rollback()
+        else:
+            stats = finalize_monitor_source_run(conn, stats, source=PINSE_SOURCE, compact_after_hours=1)
+            if not args.skip_cleanup:
+                stats = {**stats, "cleanup": cleanup_records(conn, max(1, (retention_hours + 23) // 24), max_records)}; conn.commit()
+    print(json.dumps(stats, ensure_ascii=False, indent=2, default=str)); return 0
+
+
+def command_refresh_pinse_playback_urls(args) -> int:
+    with get_db_connection() as conn:
+        stats = refresh_pinse_playback_urls(conn, limit=max(1, args.limit), refresh_window_minutes=max(1, args.refresh_window_minutes), critical_window_minutes=max(1, args.critical_window_minutes)); conn.commit()
+    print(json.dumps(stats, ensure_ascii=False, indent=2)); return 0
+
+
 def command_monitor_caoliu(args) -> int:
     base_url = args.base_url or CAOLIU_DEFAULT_BASE_URL
     retention_hours = args.retention_hours if args.retention_hours is not None else CAOLIU_RETENTION_HOURS
@@ -6649,6 +6772,28 @@ def build_parser() -> argparse.ArgumentParser:
     badnews_monitor_parser.add_argument("--dry-run", action="store_true", help="只解析和验证，不写入数据库")
     badnews_monitor_parser.set_defaults(func=command_monitor_badnews)
 
+    pornhub_monitor_parser = subparsers.add_parser("monitor-pornhub", help="单独抓取 Pornhub 推荐视频并入库")
+    pornhub_monitor_parser.add_argument("--base-url", default=PORNHUB_DEFAULT_BASE_URL, help="Pornhub 推荐入口；例如 https://cn.pornhub.com/recommended?o=time")
+    pornhub_monitor_parser.add_argument("--max-pages", type=int, default=PORNHUB_MAX_PAGES, help="单次最多分页数，默认 5")
+    pornhub_monitor_parser.add_argument("--retention-hours", type=int, default=None, help=f"视频业务保留小时数，默认 {PORNHUB_RETENTION_HOURS}")
+    pornhub_monitor_parser.add_argument("--retention-days", type=int, default=None, help="兼容旧参数：视频业务保留天数")
+    pornhub_monitor_parser.add_argument("--max-records", type=int, default=None, help="最大保留记录数")
+    pornhub_monitor_parser.add_argument("--skip-cleanup", action="store_true", help="本轮监控后不执行清理")
+    pornhub_monitor_parser.add_argument("--private-pool", action="store_true", help="不加入公共视频池")
+    pornhub_monitor_parser.add_argument("--dry-run", action="store_true", help="只解析和验证，不写入数据库")
+    pornhub_monitor_parser.set_defaults(func=command_monitor_pornhub)
+
+    pinse_monitor_parser = subparsers.add_parser("monitor-pinse", help="单独抓取 91PinSe 视频并入库")
+    pinse_monitor_parser.add_argument("--base-url", default=PINSE_DEFAULT_BASE_URL, help="91PinSe 站点入口；例如 https://91pinse.com/v/")
+    pinse_monitor_parser.add_argument("--max-pages", type=int, default=PINSE_MAX_PAGES, help="单次最多分页数，默认 10")
+    pinse_monitor_parser.add_argument("--retention-hours", type=int, default=None, help=f"视频业务保留小时数，默认 {PINSE_RETENTION_HOURS}")
+    pinse_monitor_parser.add_argument("--retention-days", type=int, default=None, help="兼容旧参数：视频业务保留天数")
+    pinse_monitor_parser.add_argument("--max-records", type=int, default=None, help="最大保留记录数")
+    pinse_monitor_parser.add_argument("--skip-cleanup", action="store_true", help="本轮监控后不执行清理")
+    pinse_monitor_parser.add_argument("--private-pool", action="store_true", help="不加入公共视频池")
+    pinse_monitor_parser.add_argument("--dry-run", action="store_true", help="只解析和验证，不写入数据库")
+    pinse_monitor_parser.set_defaults(func=command_monitor_pinse)
+
     caoliu_monitor_parser = subparsers.add_parser("monitor-caoliu", help="单独抓取 草榴社区 达盖尔的旗帜 图文帖并入库")
     caoliu_monitor_parser.add_argument("--base-url", default=CAOLIU_DEFAULT_BASE_URL, help="草榴社区版块入口；默认 https://t66y.com/thread0806.php?fid=16")
     caoliu_monitor_parser.add_argument("--max-pages", type=int, default=5, help="单次最多分页数")
@@ -6834,6 +6979,18 @@ def build_parser() -> argparse.ArgumentParser:
     refresh_badnews_parser.add_argument("--refresh-window-minutes", type=int, default=BADNEWS_REFRESH_WINDOW_MINUTES, help="普通刷新窗口")
     refresh_badnews_parser.add_argument("--critical-window-minutes", type=int, default=BADNEWS_CRITICAL_WINDOW_MINUTES, help="临界过期窗口")
     refresh_badnews_parser.set_defaults(func=command_refresh_badnews_playback_urls)
+
+    refresh_pornhub_parser = subparsers.add_parser("refresh-pornhub-playback-urls", help="刷新 Pornhub 播放 URL")
+    refresh_pornhub_parser.add_argument("--limit", type=int, default=30, help="单次最多处理条数")
+    refresh_pornhub_parser.add_argument("--refresh-window-minutes", type=int, default=PORNHUB_REFRESH_WINDOW_MINUTES, help="普通刷新窗口")
+    refresh_pornhub_parser.add_argument("--critical-window-minutes", type=int, default=PORNHUB_CRITICAL_WINDOW_MINUTES, help="临界过期窗口")
+    refresh_pornhub_parser.set_defaults(func=command_refresh_pornhub_playback_urls)
+
+    refresh_pinse_parser = subparsers.add_parser("refresh-pinse-playback-urls", help="刷新 91PinSe 播放 URL")
+    refresh_pinse_parser.add_argument("--limit", type=int, default=50, help="单次最多处理条数")
+    refresh_pinse_parser.add_argument("--refresh-window-minutes", type=int, default=PINSE_REFRESH_WINDOW_MINUTES, help="普通刷新窗口")
+    refresh_pinse_parser.add_argument("--critical-window-minutes", type=int, default=PINSE_CRITICAL_WINDOW_MINUTES, help="临界过期窗口")
+    refresh_pinse_parser.set_defaults(func=command_refresh_pinse_playback_urls)
 
     refresh_bdrq_parser = subparsers.add_parser("refresh-bdrq-playback-urls", help="刷新 背德人妻 播放 URL（仅处理带过期时间的历史记录）")
     refresh_bdrq_parser.add_argument("--limit", type=int, default=30, help="单次最多处理条数")

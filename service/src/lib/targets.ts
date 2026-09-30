@@ -1,4 +1,4 @@
-export type TargetSource = "twitter" | "youtube" | "heiliao" | "cg91" | "baoliao51" | "douyin" | "18mh" | "rou" | "dadaafa" | "18j" | "1mtif" | "tikporn" | "91porna" | "91porn" | "91rb" | "badnews" | "bdrq" | "avgood" | "705hs" | "xxxtik" | "affair" | "attach" | "caoliu" | "dirtyship" | "influencersgonewild" | "missav";
+export type TargetSource = "twitter" | "youtube" | "heiliao" | "cg91" | "baoliao51" | "douyin" | "18mh" | "rou" | "dadaafa" | "18j" | "1mtif" | "tikporn" | "91porna" | "91porn" | "91rb" | "badnews" | "pornhub" | "pinse" | "bdrq" | "avgood" | "705hs" | "xxxtik" | "affair" | "attach" | "caoliu" | "dirtyship" | "influencersgonewild" | "missav";
 export type TargetKind = "user" | "keyword" | "channel" | "site";
 
 export type ParsedTarget = {
@@ -29,6 +29,8 @@ const PORNA91_DEFAULT_URL = "https://91porna.com";
 const PORN91_DEFAULT_URL = "https://91porn.com";
 const RB91_DEFAULT_URL = "https://www.91rb.com";
 const BADNEWS_DEFAULT_URL = "https://bad.news";
+const PORNHUB_DEFAULT_URL = "https://cn.pornhub.com/recommended?o=time";
+const PINSE_DEFAULT_URL = "https://91pinse.com/v/";
 const BDRQ_DEFAULT_URL = "https://g3h4i5j6.bdrq45.cc";
 const AVGOOD_DEFAULT_URL = "https://avgood.com";
 const HS705_DEFAULT_URL = "https://705hs.com";
@@ -313,6 +315,34 @@ function isBadNewsTargetURL(raw: string) {
   } catch {
     return false;
   }
+}
+
+function normalizePornhubTargetValue(raw: string) {
+  const value = (raw.trim() || PORNHUB_DEFAULT_URL).replace(/\/+$/, "");
+  const url = new URL(value.includes("://") ? value : `https://${value}`);
+  if (!["pornhub.com", "www.pornhub.com", "cn.pornhub.com"].includes(url.host.toLowerCase())) throw new Error("Pornhub targets must use pornhub.com.");
+  return `${url.protocol}//${url.host.toLowerCase()}${url.pathname || "/recommended"}${url.search || "?o=time"}`;
+}
+
+function isPornhubTargetURL(raw: string) {
+  try {
+    const url = new URL(raw.includes("://") ? raw : `https://${raw}`);
+    return ["pornhub.com", "www.pornhub.com", "cn.pornhub.com"].includes(url.host.toLowerCase()) && url.pathname.startsWith("/recommended");
+  } catch { return false; }
+}
+
+function normalizePinseTargetValue(raw: string) {
+  const value = (raw.trim() || PINSE_DEFAULT_URL).replace(/\/+$/, "") + "/";
+  const url = new URL(value.includes("://") ? value : `https://${value}`);
+  if (!["91pinse.com", "www.91pinse.com"].includes(url.host.toLowerCase())) throw new Error("91PinSe targets must use 91pinse.com.");
+  return `${url.protocol}//${url.host.toLowerCase()}${url.pathname}`;
+}
+
+function isPinseTargetURL(raw: string) {
+  try {
+    const url = new URL(raw.includes("://") ? raw : `https://${raw}`);
+    return ["91pinse.com", "www.91pinse.com"].includes(url.host.toLowerCase()) && url.pathname.startsWith("/v");
+  } catch { return false; }
 }
 
 function normalizeBdrqTargetValue(raw: string) {
@@ -801,6 +831,24 @@ export function parseTarget(raw: string): ParsedTarget {
     return { source: "badnews", kind: "site", value: normalized, normalizedValue: normalizeHeiliaoTargetKey(normalized), tags: [] };
   }
 
+  if (value.toLowerCase().startsWith("pornhub:")) {
+    const normalized = normalizePornhubTargetValue(value.slice("pornhub:".length));
+    return { source: "pornhub", kind: "site", value: normalized, normalizedValue: normalizeHeiliaoTargetKey(normalized), tags: [] };
+  }
+  if (isPornhubTargetURL(value)) {
+    const normalized = normalizePornhubTargetValue(value);
+    return { source: "pornhub", kind: "site", value: normalized, normalizedValue: normalizeHeiliaoTargetKey(normalized), tags: [] };
+  }
+
+  if (value.toLowerCase().startsWith("pinse:")) {
+    const normalized = normalizePinseTargetValue(value.slice("pinse:".length));
+    return { source: "pinse", kind: "site", value: normalized, normalizedValue: normalizeHeiliaoTargetKey(normalized), tags: [] };
+  }
+  if (isPinseTargetURL(value)) {
+    const normalized = normalizePinseTargetValue(value);
+    return { source: "pinse", kind: "site", value: normalized, normalizedValue: normalizeHeiliaoTargetKey(normalized), tags: [] };
+  }
+
   if (value.toLowerCase().startsWith("91porn:")) {
     const normalized = normalizePorn91TargetValue(value.slice("91porn:".length));
     return { source: "91porn", kind: "site", value: normalized, normalizedValue: normalizeHeiliaoTargetKey(normalized), tags: [] };
@@ -1051,6 +1099,12 @@ export function formatTarget(target: ParsedTarget | { source?: TargetSource; kin
   if (target.source === "badnews") {
     return `badnews:${target.value}`;
   }
+  if (target.source === "pornhub") {
+    return `pornhub:${target.value}`;
+  }
+  if (target.source === "pinse") {
+    return `pinse:${target.value}`;
+  }
   if (target.source === "91porn") {
     return `91porn:${target.value}`;
   }
@@ -1201,6 +1255,14 @@ function normalizeTargetSource(rawSource: unknown): TargetSource {
     case "badnews":
     case "bad.news":
       return "badnews";
+    case "pornhub":
+    case "pornhub.com":
+    case "cn.pornhub.com":
+      return "pornhub";
+    case "pinse":
+    case "91pinse":
+    case "91pinse.com":
+      return "pinse";
     case "avgood":
     case "avgood.com":
       return "avgood";
@@ -1363,6 +1425,14 @@ function normalizeTargetKind(rawKind: unknown, source: TargetSource): TargetKind
     }
     throw new Error("Bad.news targets must use site kind.");
   }
+  if (source === "pornhub") {
+    if (kind === "site") return "site";
+    throw new Error("Pornhub targets must use site kind.");
+  }
+  if (source === "pinse") {
+    if (kind === "site") return "site";
+    throw new Error("91PinSe targets must use site kind.");
+  }
   if (source === "avgood") {
     if (kind === "site") {
       return "site";
@@ -1497,6 +1567,12 @@ function parseObjectTarget(candidate: { source?: unknown; kind?: unknown; target
     parsed = { source, kind: "site", value: normalized, normalizedValue: normalizeHeiliaoTargetKey(normalized), tags: [] };
   } else if (source === "badnews") {
     const normalized = normalizeBadNewsTargetValue(candidate.target);
+    parsed = { source, kind: "site", value: normalized, normalizedValue: normalizeHeiliaoTargetKey(normalized), tags: [] };
+  } else if (source === "pornhub") {
+    const normalized = normalizePornhubTargetValue(candidate.target);
+    parsed = { source, kind: "site", value: normalized, normalizedValue: normalizeHeiliaoTargetKey(normalized), tags: [] };
+  } else if (source === "pinse") {
+    const normalized = normalizePinseTargetValue(candidate.target);
     parsed = { source, kind: "site", value: normalized, normalizedValue: normalizeHeiliaoTargetKey(normalized), tags: [] };
   } else if (source === "avgood") {
     const normalized = normalizeAvGoodTargetValue(candidate.target);

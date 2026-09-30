@@ -47,10 +47,12 @@ AD_HOST_KEYWORDS = (
 )
 EXPECTED_PLAYBACK_HOSTS = (
     "hls.chxgdn.cn",
+    "op.udhhzr.cn",
     "ts.liheiat.xyz",
     "ts.syjiaotong.mobi",
     "tts.doudou520.online",
 )
+EXPECTED_PLAYBACK_HOST_SUFFIXES = (".oolrvd.cn",)
 
 
 def now_utc() -> datetime:
@@ -400,7 +402,7 @@ def reject_ad_url(url: str, label: str = "playback") -> None:
         raise ValueError(f"Affair {label} URL must be http(s).")
     if any(keyword in host for keyword in AD_HOST_KEYWORDS):
         raise ValueError(f"Affair {label} URL points to an ad host: {host}")
-    if label == "playback" and host not in EXPECTED_PLAYBACK_HOSTS and not host.endswith(".zhkrsawaw.cc"):
+    if label == "playback" and host not in EXPECTED_PLAYBACK_HOSTS and not host.endswith(".zhkrsawaw.cc") and not any(host.endswith(suffix) for suffix in EXPECTED_PLAYBACK_HOST_SUFFIXES):
         raise ValueError(f"Affair playback URL is outside expected media hosts: {host}")
 
 

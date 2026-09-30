@@ -130,6 +130,8 @@ def _stable_variant_key(video_url: str | None, metadata: dict | None, guid: str)
         "porn91_video_id",
         "rb91_video_id",
         "badnews_video_id",
+        "pornhub_video_id",
+        "pinse_video_id",
         "bdrq_video_id",
         "avgood_video_id",
         "hs705_video_id",
@@ -169,7 +171,7 @@ def _compute_target_display(source: str | None, kind: str | None, value: str | N
         return f"youtube:{value}"
     if source in {
         "heiliao", "cg91", "baoliao51", "douyin", "18mh", "rou", "dadaafa",
-        "18j", "1mtif", "tikporn", "91porna", "91porn", "91rb", "badnews",
+        "18j", "1mtif", "tikporn", "91porna", "91porn", "91rb", "badnews", "pornhub", "pinse",
         "caoliu",
         "bdrq", "avgood", "705hs", "xxxtik", "affair", "attach", "dirtyship",
         "influencersgonewild", "missav",
@@ -185,7 +187,7 @@ def _compute_target_link(source: str | None, kind: str | None, value: str | None
         return None
     if source in {
         "heiliao", "cg91", "baoliao51", "douyin", "18mh", "rou", "dadaafa",
-        "18j", "1mtif", "tikporn", "91porna", "91porn", "91rb", "badnews",
+        "18j", "1mtif", "tikporn", "91porna", "91porn", "91rb", "badnews", "pornhub", "pinse",
         "caoliu",
         "bdrq", "avgood", "705hs", "xxxtik", "affair", "attach", "dirtyship",
         "influencersgonewild", "missav",

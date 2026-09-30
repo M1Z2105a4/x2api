@@ -4,6 +4,8 @@ import base64
 import json
 import os
 import re
+import struct
+import zlib
 from datetime import datetime, timedelta, timezone
 from urllib.parse import parse_qs, urljoin, urlparse, urlunparse
 
@@ -110,13 +112,83 @@ def fetch_next_data(url: str, referer: str | None = None) -> dict:
     html = fetch_text(url, referer)
     soup = BeautifulSoup(html, "html.parser")
     script = soup.find("script", id="__NEXT_DATA__")
-    if not script:
-        raise ValueError("rou page is missing __NEXT_DATA__.")
-    payload = json.loads(script.string or script.get_text())
-    page_props = payload.get("props", {}).get("pageProps")
-    if not isinstance(page_props, dict):
-        raise ValueError("rou __NEXT_DATA__ is missing pageProps.")
-    return page_props
+    if script:
+        payload = json.loads(script.string or script.get_text())
+        page_props = payload.get("props", {}).get("pageProps")
+        if isinstance(page_props, dict):
+            return page_props
+
+    # RouVideo now uses TanStack Start's streamed router state instead of
+    # Next.js __NEXT_DATA__. Keep the extraction deliberately field based:
+    # the stream is JavaScript, not JSON, and contains unrelated ad objects.
+    raw = next((item.get_text() for item in soup.find_all("script") if "$_TSR.router" in item.get_text()), "")
+    if not raw:
+        raise ValueError("rou page is missing streamed router data.")
+    if ",relatedVideos:" in raw:
+        video_match = re.search(r"video:\$R\[\d+\]=\{id:\"([^\"]+)\"", raw)
+        if not video_match:
+            raise ValueError("rou detail stream is missing video data.")
+        video_start = video_match.start()
+        video_end = raw.find(",relatedVideos:", video_start)
+        video_chunk = raw[video_start:video_end if video_end >= 0 else len(raw)]
+        video = _parse_stream_video_object(video_chunk)
+        ev_match = re.search(r"ev:\$R\[\d+\]=\{d:\"([^\"]+)\",k:(\d+)\}", raw)
+        ev = {"d": ev_match.group(1), "k": int(ev_match.group(2))} if ev_match else None
+        return {"video": video, "ev": ev}
+
+    videos_marker = raw.find("videos:$R[")
+    if videos_marker < 0:
+        raise ValueError("rou list stream is missing videos data.")
+    videos_raw = raw[videos_marker:]
+    objects = []
+    starts = list(re.finditer(r"\$R\[\d+\]=\{id:\"([^\"]+)\",vid:", videos_raw))
+    for index, match in enumerate(starts):
+        chunk_end = starts[index + 1].start() if index + 1 < len(starts) else len(videos_raw)
+        parsed = _parse_stream_video_object(videos_raw[match.start():chunk_end])
+        objects.append(parsed)
+    page_match = re.search(r"pageNum:(\d+)", raw)
+    total_match = re.search(r"totalPage:(\d+)", raw)
+    return {"videos": objects, "pageNum": int(page_match.group(1)) if page_match else 1, "totalPage": int(total_match.group(1)) if total_match else 1}
+
+
+def _stream_scalar(chunk: str, field: str) -> str | None:
+    match = re.search(rf"(?:^|,)\s*{re.escape(field)}:(?:\"([^\"]*)\"|([^,}}]+))", chunk)
+    if not match and field == "id":
+        match = re.search(r"\bid:\"([^\"]+)\"", chunk)
+    if not match:
+        return None
+    value = match.group(1) if match.group(1) is not None else match.group(2).strip()
+    return None if value in {"null", "undefined"} else value
+
+
+def _parse_stream_video_object(chunk: str) -> dict:
+    tags_match = re.search(r"tags:\$R\[\d+\]=\[((?:\"[^\"]*\"(?:,|\]))*)", chunk)
+    tags = re.findall(r'"([^"\\]*(?:\\.[^"\\]*)*)"', tags_match.group(1)) if tags_match else []
+    sources = []
+    for resolution in re.findall(r"resolution:(\d+)", chunk):
+        sources.append({"resolution": int(resolution)})
+    result = {
+        "id": _stream_scalar(chunk, "id"),
+        "vid": _stream_scalar(chunk, "vid"),
+        "name": _stream_scalar(chunk, "name"),
+        "nameZh": _stream_scalar(chunk, "nameZh"),
+        "description": _stream_scalar(chunk, "description"),
+        "ref": _stream_scalar(chunk, "ref"),
+        "createdAt": _stream_scalar(chunk, "createdAt"),
+        "updatedAt": _stream_scalar(chunk, "updatedAt"),
+        "duration": float_or_none(_stream_scalar(chunk, "duration")),
+        "viewCount": int_or_none(_stream_scalar(chunk, "viewCount")),
+        "likeCount": int_or_none(_stream_scalar(chunk, "likeCount")),
+        "dislikeCount": int_or_none(_stream_scalar(chunk, "dislikeCount")),
+        "published": _stream_scalar(chunk, "published") != "false",
+        "archived": _stream_scalar(chunk, "archived") == "true",
+        "tags": tags,
+        "sources": sources,
+    }
+    cover = re.search(r'coverImageUrl:"([^\"]+)"', chunk)
+    if cover:
+        result["coverImageUrl"] = cover.group(1)
+    return result
 
 
 def build_list_page_url(base_url: str, page: int) -> str:
@@ -214,17 +286,50 @@ def decode_ev_payload(ev: dict | None) -> dict:
     return payload
 
 
-def normalize_hls_playlist_url(video_url: str) -> str:
-    parsed = urlparse(video_url.strip())
+def normalize_hls_playlist_url(video_url: str, base_url: str | None = None) -> str:
+    raw = video_url.strip()
+    if raw.startswith("/"):
+        if not base_url:
+            raise ValueError("rou relative video URL is missing its page origin.")
+        raw = urljoin(base_url, raw)
+    parsed = urlparse(raw)
     if parsed.scheme not in {"http", "https"} or not parsed.netloc:
-        raise ValueError("rou video URL must be absolute HTTP(S).")
+        raise ValueError("rou video URL must be absolute HTTP(S) or a site-relative HLS endpoint.")
     path = parsed.path
     if path.lower().endswith("/index.jpg"):
         path = path[: -len(".jpg")] + ".m3u8"
     normalized = urlunparse((parsed.scheme, parsed.netloc, path, "", parsed.query, ""))
-    if not urlparse(normalized).path.lower().endswith(".m3u8"):
-        raise ValueError("rou video URL could not be normalized to .m3u8.")
+    if not (path.lower().endswith(".m3u8") or path.startswith("/api/hls/")):
+        raise ValueError("rou video URL is not a supported HLS endpoint.")
     return normalized
+
+
+ROU_PNG_SIGNATURE = b"\x89PNG\r\n\x1a\n"
+ROU_PAYLOAD_CHUNK = 0x726F5564
+
+
+def unwrap_rou_payload(data: bytes) -> bytes:
+    if not data.startswith(ROU_PNG_SIGNATURE):
+        return data
+    offset = len(ROU_PNG_SIGNATURE)
+    while offset + 8 <= len(data):
+        length, chunk_type = struct.unpack(">II", data[offset : offset + 8])
+        start = offset + 8
+        end = start + length
+        if end > len(data):
+            break
+        if chunk_type == ROU_PAYLOAD_CHUNK and length >= 1:
+            payload = data[start + 1 : end]
+            return zlib.decompress(payload) if data[start] & 1 else payload
+        offset = end + 4
+    raise ValueError("rou response is PNG-wrapped but has no roUd payload.")
+
+
+def fetch_rou_payload(url: str, referer: str) -> bytes:
+    reject_ad_url(url)
+    response = requests.get(url, headers=hls_headers(referer), timeout=ROU_REQUEST_TIMEOUT_SECONDS)
+    response.raise_for_status()
+    return unwrap_rou_payload(response.content)
 
 
 def playback_expiry(video_url: str) -> datetime | None:
@@ -267,16 +372,15 @@ def expected_duration_floor(expected_duration: float | None) -> float:
 def verify_hls_url(video_url: str, referer: str, expected_duration: float | None = None) -> dict:
     reject_ad_url(video_url)
     parsed = urlparse(video_url)
-    if parsed.scheme not in {"http", "https"} or not parsed.path.lower().endswith(".m3u8"):
-        raise ValueError("rou video URL must be an HLS .m3u8 URL.")
+    if parsed.scheme not in {"http", "https"} or not (parsed.path.lower().endswith(".m3u8") or parsed.path.startswith("/api/hls/")):
+        raise ValueError("rou video URL must be an HLS playlist endpoint.")
 
     expires_at = playback_expiry(video_url)
     if expires_at and expires_at <= now_utc() + timedelta(minutes=1):
         raise ValueError("rou HLS URL is already expired or too close to expiry.")
 
-    response = requests.get(video_url, headers=hls_headers(referer), timeout=ROU_REQUEST_TIMEOUT_SECONDS)
-    response.raise_for_status()
-    playlist = response.text
+    playlist_bytes = fetch_rou_payload(video_url, referer)
+    playlist = playlist_bytes.decode("utf-8", "replace")
     if "#EXTM3U" not in playlist or "#EXTINF" not in playlist:
         raise ValueError("rou HLS playlist is not playable media.")
 
@@ -292,9 +396,9 @@ def verify_hls_url(video_url: str, referer: str, expected_duration: float | None
     checked_segment = False
     for media_url in media_urls[:6]:
         reject_ad_url(media_url)
-        media_response = requests.get(media_url, headers=hls_headers(referer), timeout=ROU_REQUEST_TIMEOUT_SECONDS, stream=True)
+        media_response = requests.get(media_url, headers=hls_headers(referer), timeout=ROU_REQUEST_TIMEOUT_SECONDS)
         media_response.raise_for_status()
-        chunk = next(media_response.iter_content(376), b"")
+        chunk = unwrap_rou_payload(media_response.content)
         if len(chunk) >= 188 and chunk[0] == 0x47:
             checked_segment = True
             break
@@ -303,9 +407,12 @@ def verify_hls_url(video_url: str, referer: str, expected_duration: float | None
 
     return {
         "video_url": video_url,
-        "video_url_expires_at": video_url_expires_at(video_url),
-        "playback_refresh_required": expires_at is not None,
-        "playlist_bytes": len(playlist.encode("utf-8")),
+        "video_url_expires_at": min(
+            [candidate for candidate in (playback_expiry(media_url) for media_url in media_urls) if candidate]
+            or [video_url_expires_at(video_url)]
+        ),
+        "playback_refresh_required": expires_at is not None or any(playback_expiry(media_url) for media_url in media_urls),
+        "playlist_bytes": len(playlist_bytes),
         "playlist_duration_seconds": total_duration,
         "media_url_count": len(media_urls),
     }
@@ -330,7 +437,9 @@ def parse_detail_page(detail_page_url: str, list_item: dict | None = None) -> di
     if not raw_video_url:
         raise ValueError("rou detail encrypted payload is missing videoUrl.")
 
-    video_url = normalize_hls_playlist_url(raw_video_url)
+    parsed_page = urlparse(detail_page_url)
+    page_origin = f"{parsed_page.scheme}://{parsed_page.netloc}"
+    video_url = normalize_hls_playlist_url(raw_video_url, page_origin)
     tags = unique_tags(video.get("tags") if isinstance(video.get("tags"), list) else (list_item or {}).get("tags"))
     title = non_empty(video.get("name")) or non_empty(video.get("nameZh")) or (list_item or {}).get("title") or ROU_SITE_NAME
     description = non_empty(video.get("description")) or (list_item or {}).get("description") or title

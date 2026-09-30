@@ -34,6 +34,7 @@ DIRECT_VIDEO_EXTENSIONS = (".mp4", ".m4v", ".mov", ".webm")
 EXPIRY_QUERY_KEYS = ("e", "exp", "expires", "expire", "deadline", "token_expire")
 EXPECTED_PLAYBACK_HOSTS = {
     "hls.chxgdn.cn",
+    "hls.qldjxf.cn",
     "tts.doudou520.online",
     "dx.oviluf.cn",
     "ts.syjiaotong.mobi",
