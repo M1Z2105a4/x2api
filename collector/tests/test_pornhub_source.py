@@ -3,6 +3,7 @@ import unittest
 from collector.pornhub_source import (
     build_list_page_url,
     normalize_pornhub_target_value,
+    normalize_pornhub_hls_url,
     pornhub_playback_expiry,
 )
 
@@ -25,3 +26,10 @@ class PornhubSourceTests(unittest.TestCase):
             )
         )
 
+    def test_rewrites_dead_hls_cdn_host(self):
+        self.assertEqual(
+            normalize_pornhub_hls_url(
+                "https://hv-h.phncdn.com/hls/video/master.m3u8?h=abc&e=1790722242&f=1"
+            ),
+            "https://ev-h.phncdn.com/hls/video/master.m3u8?h=abc&e=1790722242&f=1",
+        )

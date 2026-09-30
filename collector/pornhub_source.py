@@ -53,6 +53,11 @@ PORNHUB_CRITICAL_WINDOW_MINUTES = int(os.environ.get("PORNHUB_CRITICAL_WINDOW_MI
 PORNHUB_MAX_PAGES = int(os.environ.get("PORNHUB_MAX_PAGES", "5"))
 PORNHUB_MIN_VIDEO_DURATION_SECONDS = int(os.environ.get("PORNHUB_MIN_VIDEO_DURATION_SECONDS", "3"))
 PORNHUB_ALLOWED_HOSTS = {"pornhub.com", "www.pornhub.com", "cn.pornhub.com"}
+PORNHUB_HLS_HOST_REWRITES = {
+    # Pornhub currently emits hv-h URLs whose equivalent ev-h endpoint serves
+    # the same signed playlist. Keep the signed path/query untouched.
+    "hv-h.phncdn.com": "ev-h.phncdn.com",
+}
 
 
 def int_or_none(value) -> int | None:
@@ -116,6 +121,17 @@ def normalize_asset_url(page_url: str, raw: str | None) -> str | None:
     if parsed.scheme not in {"http", "https"} or not parsed.netloc:
         return None
     return urlunparse(parsed._replace(fragment=""))
+
+
+def normalize_pornhub_hls_url(raw: str | None) -> str | None:
+    value = clean_text(raw)
+    if not value:
+        return None
+    parsed = urlparse(value)
+    host = PORNHUB_HLS_HOST_REWRITES.get(parsed.netloc.lower())
+    if not host:
+        return value
+    return urlunparse(parsed._replace(netloc=host))
 
 
 def parse_duration(value: str | None) -> int | None:
@@ -191,7 +207,7 @@ def parse_detail_page(detail_page_url: str, list_item: dict | None = None) -> di
         raise ValueError("Pornhub detail page has no HLS video URL.")
     title = clean_text(data.get("video_title")) or (list_item or {}).get("title") or f"Pornhub video {viewkey}"
     duration = int_or_none(data.get("video_duration")) or (list_item or {}).get("duration")
-    player = {"guid": f"{PORNHUB_SOURCE}:{viewkey}", "video_id": viewkey, "player_index": 1, "video_title": title, "video_url": normalize_asset_url(detail_page_url, hls[0]["videoUrl"]), "video_type": "hls", "quality": hls[0].get("quality")}
+    player = {"guid": f"{PORNHUB_SOURCE}:{viewkey}", "video_id": viewkey, "player_index": 1, "video_title": title, "video_url": normalize_pornhub_hls_url(normalize_asset_url(detail_page_url, hls[0]["videoUrl"])), "video_type": "hls", "quality": hls[0].get("quality")}
     return {"url": detail_page_url, "video_id": viewkey, "title": title, "description": title, "image": normalize_asset_url(detail_page_url, data.get("image_url")), "author_name": (list_item or {}).get("author_name"), "author_url": (list_item or {}).get("author_url"), "duration": duration, "published_at": (list_item or {}).get("published_at") or now_utc(), "tags": (list_item or {}).get("tags") or [], "players": [player]}
 
 
@@ -276,7 +292,7 @@ def refresh_playback_urls(conn, limit: int, refresh_window_minutes: int, critica
         if processed >= limit:
             break
         with conn.cursor() as cur:
-            cur.execute(f"SELECT i.* FROM items i INNER JOIN targets t ON t.id=i.target_id WHERE t.source=%s AND i.expires_at>NOW() AND i.video_url_expires_at<=NOW()+(%s||' minutes')::interval {ordering} LIMIT %s", (PORNHUB_SOURCE, window_minutes, limit))
+            cur.execute(f"SELECT i.* FROM items i INNER JOIN targets t ON t.id=i.target_id WHERE t.source=%s AND i.expires_at>NOW() AND (i.video_url LIKE %s OR i.video_url_expires_at<=NOW()+(%s||' minutes')::interval) {ordering} LIMIT %s", (PORNHUB_SOURCE, "%://hv-h.phncdn.com/%", window_minutes, limit))
             rows = cur.fetchall()
         for row in rows:
             row_id = str(row["id"])
