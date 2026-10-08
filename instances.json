@@ -1,14 +1,10 @@
 [
   {
-    "url": "https://nitter.meowing.monster",
-    "priority": 0
-  },
-  {
-    "url": "https://nitter.xitter.cc",
-    "priority": 0
-  },
-  {
     "url": "https://nitter.kareem.one",
+    "priority": 0
+  },
+  {
+    "url": "https://nitter.meowing.monster",
     "priority": 0
   },
   {
@@ -17,6 +13,10 @@
   },
   {
     "url": "https://nitter.pp.ua",
+    "priority": 0
+  },
+  {
+    "url": "https://nitter.xitter.cc",
     "priority": 0
   },
   {
