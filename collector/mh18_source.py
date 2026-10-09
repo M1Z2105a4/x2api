@@ -40,6 +40,17 @@ def now_iso() -> str:
     return now_utc().isoformat()
 
 
+def parse_epoch_datetime(value) -> datetime | None:
+    try:
+        timestamp = int(str(value).strip())
+    except (TypeError, ValueError):
+        return None
+    try:
+        return datetime.fromtimestamp(timestamp, tz=timezone.utc)
+    except (OverflowError, OSError, ValueError):
+        return None
+
+
 def non_empty(value) -> str | None:
     text = str(value).strip() if value is not None else ""
     return text or None
@@ -275,7 +286,8 @@ def parse_detail_page(detail_url: str, list_item: dict | None = None) -> dict:
         or (list_item or {}).get("image")
     )
     video_url = str(payload.get("url") or payload.get("view_url") or "").strip()
-    if not video_url or ".m3u8" not in video_url.lower():
+    video_url = normalize_asset_url(detail_url, video_url) or video_url
+    if not video_url or (not urlparse(video_url).path.lower().endswith(".m3u8") and urlparse(video_url).path != "/media/m3u8"):
         raise ValueError("18mh detail payload is missing HLS video URL.")
     tags = detail_tags(payload)
     player = {
@@ -306,7 +318,11 @@ def parse_detail_page(detail_url: str, list_item: dict | None = None) -> dict:
 
 
 def parse_auth_key_expiry(video_url: str) -> datetime | None:
-    auth_key = parse_qs(urlparse(video_url).query).get("auth_key", [None])[0]
+    query = parse_qs(urlparse(video_url).query)
+    expiry = parse_epoch_datetime((query.get("exp") or [None])[0])
+    if expiry:
+        return expiry
+    auth_key = (query.get("auth_key") or [None])[0]
     if not auth_key:
         return None
     first_part = auth_key.split("-", 1)[0]
@@ -327,7 +343,8 @@ def video_url_expires_at(video_url: str) -> datetime:
 
 def verify_hls_url(video_url: str, referer: str) -> dict:
     parsed = urlparse(video_url)
-    if parsed.scheme not in {"http", "https"} or not parsed.path.endswith(".m3u8"):
+    is_proxy_playlist = parsed.path == "/media/m3u8" and "url" in parse_qs(parsed.query) and "token" in parse_qs(parsed.query)
+    if parsed.scheme not in {"http", "https"} or (not parsed.path.endswith(".m3u8") and not is_proxy_playlist):
         raise ValueError("18mh video URL must be an HLS .m3u8 URL.")
     playlist = fetch_hls_text(video_url, referer)
     if "#EXTM3U" not in playlist or "#EXTINF" not in playlist:

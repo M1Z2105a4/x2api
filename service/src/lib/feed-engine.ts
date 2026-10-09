@@ -199,6 +199,8 @@ const VIDEO_SOURCE_VALUES = [
   "91porn",
   "91rb",
   "badnews",
+  "pornhub",
+  "pinse",
   "bdrq",
   "avgood",
   "705hs",
@@ -266,6 +268,8 @@ function videoKeyExpression(alias: "i" | "watched_item"): QueryChunk {
       WHEN ${alias}.metadata->>'porn91_video_id' IS NOT NULL THEN '91porn:' || (${alias}.metadata->>'porn91_video_id')
       WHEN ${alias}.metadata->>'rb91_video_id' IS NOT NULL THEN '91rb:' || (${alias}.metadata->>'rb91_video_id')
       WHEN ${alias}.metadata->>'badnews_video_id' IS NOT NULL THEN 'badnews:' || (${alias}.metadata->>'badnews_video_id')
+      WHEN ${alias}.metadata->>'pornhub_video_id' IS NOT NULL THEN 'pornhub:' || (${alias}.metadata->>'pornhub_video_id')
+      WHEN ${alias}.metadata->>'pinse_video_id' IS NOT NULL THEN 'pinse:' || (${alias}.metadata->>'pinse_video_id')
       WHEN ${alias}.metadata->>'bdrq_video_id' IS NOT NULL THEN 'bdrq:' || (${alias}.metadata->>'bdrq_video_id')
       WHEN ${alias}.metadata->>'avgood_video_id' IS NOT NULL THEN 'avgood:' || (${alias}.metadata->>'avgood_video_id')
       WHEN ${alias}.metadata->>'hs705_video_id' IS NOT NULL THEN '705hs:' || (${alias}.metadata->>'hs705_video_id')
@@ -290,6 +294,8 @@ function videoKeyExpression(alias: "i" | "watched_item"): QueryChunk {
       WHEN ${alias}.guid LIKE '91porn:%' THEN ${alias}.guid
       WHEN ${alias}.guid LIKE '91rb:%' THEN ${alias}.guid
       WHEN ${alias}.guid LIKE 'badnews:%' THEN ${alias}.guid
+      WHEN ${alias}.guid LIKE 'pornhub:%' THEN ${alias}.guid
+      WHEN ${alias}.guid LIKE 'pinse:%' THEN ${alias}.guid
       WHEN ${alias}.guid LIKE 'bdrq:%' THEN ${alias}.guid
       WHEN ${alias}.guid LIKE 'avgood:%' THEN ${alias}.guid
       WHEN ${alias}.guid LIKE '705hs:%' THEN ${alias}.guid
@@ -1114,9 +1120,11 @@ export async function listVideoFeedFromOpenSearch(query: VideoFeedQuery) {
     client.search(exploreSearchParams),
   ])) as unknown as [OpenSearchSearchResponse, OpenSearchSearchResponse];
 
+  const personalizedCandidates = await rowsFromResponse(personalizedResponse);
+  const exploreCandidates = await rowsFromResponse(exploreResponse);
   const items = selectFeedItems({
-    personalizedCandidates: await rowsFromResponse(personalizedResponse),
-    exploreCandidates: await rowsFromResponse(exploreResponse),
+    personalizedCandidates,
+    exploreCandidates,
     profile,
     limit,
     previousLastAuthor: cursor?.lastAuthor,
@@ -1125,7 +1133,7 @@ export async function listVideoFeedFromOpenSearch(query: VideoFeedQuery) {
   const nextCursorPayload = buildVideoFeedNextCursorPayload({
     seenIds,
     seenGuids,
-    seenVideoKeys: cursorSeenVideoKeys,
+    seenVideoKeys,
     items,
   });
   const nextCursor = nextCursorPayload ? encodeCursor(nextCursorPayload) : null;
@@ -1140,7 +1148,12 @@ export async function listVideoFeedFromOpenSearch(query: VideoFeedQuery) {
     pagination: {
       limit,
       nextCursor,
-      hasMore: items.length === limit,
+      // Selection can return fewer than `limit` after diversity filtering.
+      // A larger candidate pool means the current cursor still has data to
+      // consume; otherwise preserve the terminal-page signal.
+      hasMore:
+        nextCursor !== null &&
+        (items.length === limit || personalizedCandidates.length > items.length || exploreCandidates.length > items.length),
     },
   };
 }

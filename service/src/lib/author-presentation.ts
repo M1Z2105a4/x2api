@@ -30,6 +30,8 @@ const DETAIL_LINK_PROFILE_PLATFORMS: Record<string, string> = {
   "91porn": "91porn",
   "91rb": "91热爆",
   badnews: "Bad.news",
+  pornhub: "Pornhub",
+  pinse: "91PinSe",
   bdrq: "背德人妻",
   avgood: "AvGood",
   "705hs": "992KP",
@@ -110,6 +112,14 @@ export function normalizePresentationSource(value: string) {
     case "badnews":
     case "bad.news":
       return "badnews";
+    case "pornhub":
+    case "pornhub.com":
+    case "cn.pornhub.com":
+      return "pornhub";
+    case "pinse":
+    case "91pinse":
+    case "91pinse.com":
+      return "pinse";
     case "avgood":
     case "avgood.com":
       return "avgood";
@@ -220,6 +230,10 @@ function sourceDisplayName(source: string) {
       return "91热爆";
     case "badnews":
       return "Bad.news";
+    case "pornhub":
+      return "Pornhub";
+    case "pinse":
+      return "91PinSe";
     case "missav":
       return "MISSAV";
     case "bdrq":
