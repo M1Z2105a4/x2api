@@ -14,6 +14,8 @@ from collector.twitter_monitor import (
     order_instances_for_attempts,
     parse_nitter_rss,
     parse_nitter_timeline_html,
+    resolve_fxtwitter_video,
+    twitter_media_id_from_poster,
     scrape_nitter_with_playwright,
 )
 
@@ -69,6 +71,9 @@ class FakeResponse:
     def __init__(self, status_code: int, text: str):
         self.status_code = status_code
         self.text = text
+
+    def json(self):
+        return self.payload
 
 
 class NitterFallbackTest(unittest.TestCase):
@@ -128,6 +133,15 @@ class NitterFallbackTest(unittest.TestCase):
         self.assertEqual(keyword_tweet["target_value"], "AI")
         self.assertIsNone(keyword_tweet["fullname"])
 
+    def test_rss_uses_video_cover_when_tweet_also_has_regular_images(self):
+        rss_xml = RSS_XML.replace(
+            '<img src="https://nitter.net/pic/amplify_video_thumb%2F456%2Fimg%2Fposter.jpg" />',
+            '<img src="https://pbs.twimg.com/media/photo.jpg" />'
+            '<img src="https://nitter.net/pic/amplify_video_thumb%2F456%2Fimg%2Fposter.jpg" />',
+        )
+        tweet = parse_nitter_rss("alice", "https://nitter.net", rss_xml)[0]
+        self.assertEqual(tweet["video_poster_url"], "https://pbs.twimg.com/amplify_video_thumb/456/img/poster.jpg")
+
     @patch(
         "collector.twitter_monitor.requests.get",
         return_value=FakeResponse(200, TIMELINE_HTML.replace("/123", "/456")),
@@ -140,6 +154,38 @@ class NitterFallbackTest(unittest.TestCase):
         self.assertEqual(request_get.call_count, 1)
         self.assertEqual(enriched[0]["video_url"], "https://video.twimg.com/video.mp4")
         self.assertEqual(enriched[0]["content"], "Hello from Nitter")
+
+    def test_fxtwitter_fallback_matches_rss_cover_media(self):
+        payload = {
+            "tweet": {
+                "id": "456",
+                "media": {
+                    "videos": [{
+                        "id": "456",
+                        "thumbnail_url": "https://pbs.twimg.com/amplify_video_thumb/456/img/poster.jpg",
+                        "variants": [{"url": "https://video.twimg.com/456.mp4"}],
+                    }],
+                },
+            }
+        }
+        response = FakeResponse(200, "")
+        response.payload = payload
+        with patch("collector.twitter_monitor.requests.get", return_value=response):
+            self.assertEqual(
+                resolve_fxtwitter_video("456", "https://pbs.twimg.com/amplify_video_thumb/456/img/poster.jpg"),
+                "https://video.twimg.com/456.mp4",
+            )
+        self.assertEqual(twitter_media_id_from_poster("https://pbs.twimg.com/ext_tw_video_thumb/789/img/x.jpg"), "789")
+
+    def test_fxtwitter_fallback_rejects_different_cover_media(self):
+        payload = {"tweet": {"id": "456", "media": {"videos": [{
+            "id": "999", "thumbnail_url": "https://pbs.twimg.com/amplify_video_thumb/999/img/poster.jpg",
+            "variants": [{"url": "https://video.twimg.com/999.mp4"}],
+        }]}}}
+        response = FakeResponse(200, "")
+        response.payload = payload
+        with patch("collector.twitter_monitor.requests.get", return_value=response):
+            self.assertIsNone(resolve_fxtwitter_video("456", "https://pbs.twimg.com/amplify_video_thumb/456/img/poster.jpg"))
 
     def test_rejects_xcancel_whitelist_placeholder_feed(self):
         rss_xml = RSS_XML.replace("Alice / @alice", "RSS reader not yet whitelisted!")

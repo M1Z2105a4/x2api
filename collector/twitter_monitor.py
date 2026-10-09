@@ -767,6 +767,8 @@ NITTER_INSTANCE_PRIORITY_OVERRIDES = {
 NITTER_REQUEST_TIMEOUT_SECONDS = 20
 NITTER_RUNTIME_DISABLE_PENALTY = 100
 NITTER_RSS_DETAIL_LIMIT = max(0, int(os.environ.get("NITTER_RSS_DETAIL_LIMIT", "20")))
+FXTWITTER_API_URL = os.environ.get("FXTWITTER_API_URL", "https://api.fxtwitter.com/status").strip().rstrip("/")
+FXTWITTER_REQUEST_TIMEOUT_SECONDS = max(5, int(os.environ.get("FXTWITTER_REQUEST_TIMEOUT_SECONDS", "15")))
 NITTER_SEARCH_HTTP_ATTEMPTS = max(1, int(os.environ.get("NITTER_SEARCH_HTTP_ATTEMPTS", "2")))
 NITTER_BROWSER_CHALLENGE_WAIT_SECONDS = max(
     5,
@@ -2055,6 +2057,60 @@ def get_original_video_url(video_url: str, instance: str) -> str:
         return video_url
 
 
+def twitter_media_id_from_poster(poster_url: str | None) -> str | None:
+    if not isinstance(poster_url, str):
+        return None
+    match = re.search(r"/(?:amplify_video_thumb|ext_tw_video_thumb|tweet_video_thumb)/([0-9]+)/", poster_url)
+    return match.group(1) if match else None
+
+
+def resolve_fxtwitter_video(tweet_id: str, poster_url: str | None = None) -> str | None:
+    """Resolve a tweet video, accepting only the media represented by its cover."""
+    if not tweet_id:
+        return None
+    try:
+        response = requests.get(
+            f"{FXTWITTER_API_URL}/{quote(str(tweet_id), safe='')}",
+            headers={"Accept": "application/json", "User-Agent": NITTER_HTTP_USER_AGENT},
+            timeout=FXTWITTER_REQUEST_TIMEOUT_SECONDS,
+        )
+        if response.status_code < 200 or response.status_code >= 300:
+            return None
+        payload = response.json()
+    except (requests.RequestException, ValueError, TypeError) as exc:
+        print(f"[FxTwitter] 解析推文 {tweet_id} 失败: {exc}")
+        return None
+
+    tweet = payload.get("tweet") if isinstance(payload, dict) else None
+    if not isinstance(tweet, dict):
+        return None
+    expected_media_id = twitter_media_id_from_poster(poster_url)
+    returned_id = str(tweet.get("id") or "")
+    if not expected_media_id and returned_id and returned_id != str(tweet_id):
+        return None
+    media = tweet.get("media") if isinstance(tweet.get("media"), dict) else {}
+    candidates = []
+    for key in ("videos", "all"):
+        values = media.get(key)
+        if isinstance(values, list):
+            candidates.extend(value for value in values if isinstance(value, dict))
+    for item in candidates:
+        item_id = str(item.get("id") or "")
+        thumbnail_id = twitter_media_id_from_poster(item.get("thumbnail_url"))
+        if expected_media_id and expected_media_id not in {item_id, thumbnail_id}:
+            continue
+        variants = item.get("variants") or item.get("formats") or []
+        urls = []
+        if isinstance(item.get("url"), str):
+            urls.append(item["url"])
+        if isinstance(variants, list):
+            urls.extend(value.get("url") for value in variants if isinstance(value, dict))
+        mp4_urls = [url for url in urls if isinstance(url, str) and ".mp4" in url.lower()]
+        if mp4_urls:
+            return mp4_urls[-1]
+    return None
+
+
 def upload_to_imgbb(image_url: str) -> str | None:
     if not IMGBB_API_KEY:
         return None
@@ -2398,7 +2454,12 @@ def parse_nitter_rss(target: str, instance: str, rss_xml: str) -> list[dict]:
                 images.append(image_url)
 
         description_text = description.get_text(" ", strip=True).lower()
-        video_poster_url = images[0] if "video" in description_text and images else None
+        video_poster_url = None
+        if "video" in description_text and images:
+            video_poster_url = next(
+                (image for image in images if twitter_media_id_from_poster(image)),
+                images[0],
+            )
         published_raw = (item.findtext("pubDate") or "").strip()
         try:
             published = parsedate_to_datetime(published_raw).isoformat() if published_raw else ""
@@ -2474,33 +2535,31 @@ def enrich_nitter_rss_tweets(
             if curl_response is not None:
                 response_status, response_text = curl_response
 
-        if classify_nitter_page(response_status, response_text) != "timeline":
-            print(f"[{target}] RSS 详情补全失败: {tweet['link']}")
-            consecutive_failures += 1
-            continue
+        detail = None
+        if classify_nitter_page(response_status, response_text) == "timeline":
+            detail_tweets = parse_nitter_timeline_html(target, instance, response_text)
+            detail = next((item for item in detail_tweets if item["guid"] == tweet["guid"]), None)
 
-        detail_tweets = parse_nitter_timeline_html(target, instance, response_text)
-        detail = next((item for item in detail_tweets if item["guid"] == tweet["guid"]), None)
-        if not detail:
-            print(f"[{target}] RSS 详情未找到推文 {tweet['guid']}: {tweet['link']}")
+        if detail:
+            consecutive_failures = 0
+            for field in (
+                "content", "raw_content", "translated_content", "published", "author",
+                "fullname", "images", "video_url", "video_poster_url", "is_retweet",
+            ):
+                if detail.get(field) not in (None, "", []):
+                    tweet[field] = detail[field]
+        else:
             consecutive_failures += 1
-            continue
 
-        consecutive_failures = 0
-        for field in (
-            "content",
-            "raw_content",
-            "translated_content",
-            "published",
-            "author",
-            "fullname",
-            "images",
-            "video_url",
-            "video_poster_url",
-            "is_retweet",
-        ):
-            if detail.get(field) not in (None, "", []):
-                tweet[field] = detail[field]
+        # Current Nitter instances often expose only the RSS cover. Resolve the
+        # same tweet through FxTwitter and reject media from a different cover.
+        if needs_video_enrichment and not tweet.get("video_url"):
+            resolved_video = resolve_fxtwitter_video(tweet["guid"], tweet.get("video_poster_url"))
+            if resolved_video:
+                tweet["video_url"] = resolved_video
+                consecutive_failures = 0
+            elif not detail:
+                print(f"[{target}] RSS 详情与 FxTwitter 补全均失败: {tweet['link']}")
 
     return tweets
 

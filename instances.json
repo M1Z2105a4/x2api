@@ -1,9 +1,5 @@
 [
   {
-    "url": "https://nitter.kareem.one",
-    "priority": 0
-  },
-  {
     "url": "https://nitter.meowing.monster",
     "priority": 0
   },
@@ -12,11 +8,11 @@
     "priority": 0
   },
   {
-    "url": "https://nitter.pp.ua",
+    "url": "https://nitter.kareem.one",
     "priority": 0
   },
   {
-    "url": "https://nitter.netbub.com",
+    "url": "https://nitter.pp.ua",
     "priority": 0
   },
   {
@@ -24,11 +20,7 @@
     "priority": 0
   },
   {
-    "url": "https://nitter.click",
-    "priority": 0
-  },
-  {
-    "url": "https://nitter.jaydenha.uk",
+    "url": "https://nitter.netbub.com",
     "priority": 0
   }
 ]
