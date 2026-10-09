@@ -1120,9 +1120,11 @@ export async function listVideoFeedFromOpenSearch(query: VideoFeedQuery) {
     client.search(exploreSearchParams),
   ])) as unknown as [OpenSearchSearchResponse, OpenSearchSearchResponse];
 
+  const personalizedCandidates = await rowsFromResponse(personalizedResponse);
+  const exploreCandidates = await rowsFromResponse(exploreResponse);
   const items = selectFeedItems({
-    personalizedCandidates: await rowsFromResponse(personalizedResponse),
-    exploreCandidates: await rowsFromResponse(exploreResponse),
+    personalizedCandidates,
+    exploreCandidates,
     profile,
     limit,
     previousLastAuthor: cursor?.lastAuthor,
@@ -1131,7 +1133,7 @@ export async function listVideoFeedFromOpenSearch(query: VideoFeedQuery) {
   const nextCursorPayload = buildVideoFeedNextCursorPayload({
     seenIds,
     seenGuids,
-    seenVideoKeys: cursorSeenVideoKeys,
+    seenVideoKeys,
     items,
   });
   const nextCursor = nextCursorPayload ? encodeCursor(nextCursorPayload) : null;
@@ -1146,7 +1148,12 @@ export async function listVideoFeedFromOpenSearch(query: VideoFeedQuery) {
     pagination: {
       limit,
       nextCursor,
-      hasMore: items.length === limit,
+      // Selection can return fewer than `limit` after diversity filtering.
+      // A larger candidate pool means the current cursor still has data to
+      // consume; otherwise preserve the terminal-page signal.
+      hasMore:
+        nextCursor !== null &&
+        (items.length === limit || personalizedCandidates.length > items.length || exploreCandidates.length > items.length),
     },
   };
 }
