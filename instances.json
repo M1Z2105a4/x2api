@@ -8,6 +8,14 @@
     "priority": 0
   },
   {
+    "url": "https://nitter.click",
+    "priority": 0
+  },
+  {
+    "url": "https://nitter.xitter.cc",
+    "priority": 0
+  },
+  {
     "url": "https://shitter.thepixora.com",
     "priority": 0
   },
@@ -16,15 +24,11 @@
     "priority": 0
   },
   {
-    "url": "https://nitter.meowing.monster",
-    "priority": 0
-  },
-  {
     "url": "https://nitter.pp.ua",
     "priority": 0
   },
   {
-    "url": "https://nitter.xitter.cc",
+    "url": "https://nitter.kareem.one",
     "priority": 0
   }
 ]
