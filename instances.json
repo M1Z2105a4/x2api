@@ -4,6 +4,14 @@
     "priority": 0
   },
   {
+    "url": "https://nitter.meowing.monster",
+    "priority": 0
+  },
+  {
+    "url": "https://nitter.tiekoetter.com",
+    "priority": 0
+  },
+  {
     "url": "https://nitter.miningtcup.me",
     "priority": 0
   },
@@ -12,15 +20,7 @@
     "priority": 0
   },
   {
-    "url": "https://nitter.tiekoetter.com",
-    "priority": 0
-  },
-  {
     "url": "https://nitter.kareem.one",
-    "priority": 0
-  },
-  {
-    "url": "https://nitter.meowing.monster",
     "priority": 0
   },
   {
@@ -28,11 +28,11 @@
     "priority": 0
   },
   {
-    "url": "https://nitter.pp.ua",
+    "url": "https://nitter.click",
     "priority": 0
   },
   {
-    "url": "https://nitter.click",
+    "url": "https://nitter.pp.ua",
     "priority": 0
   }
 ]
