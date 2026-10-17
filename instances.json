@@ -1,10 +1,14 @@
 [
   {
+    "url": "https://nitter.jaydenha.uk",
+    "priority": 0
+  },
+  {
     "url": "https://nitter.netbub.com",
     "priority": 0
   },
   {
-    "url": "https://nitter.tiekoetter.com",
+    "url": "https://nitter.meowing.monster",
     "priority": 0
   },
   {
@@ -16,15 +20,11 @@
     "priority": 0
   },
   {
-    "url": "https://nitter.meowing.monster",
-    "priority": 0
-  },
-  {
     "url": "https://nitter.pp.ua",
     "priority": 0
   },
   {
-    "url": "https://nitter.click",
+    "url": "https://nitter.tiekoetter.com",
     "priority": 0
   }
 ]
