@@ -4,6 +4,14 @@
     "priority": 0
   },
   {
+    "url": "https://nitter.meowing.monster",
+    "priority": 0
+  },
+  {
+    "url": "https://shitter.thepixora.com",
+    "priority": 0
+  },
+  {
     "url": "https://nitter.tiekoetter.com",
     "priority": 0
   },
@@ -16,23 +24,11 @@
     "priority": 0
   },
   {
-    "url": "https://nitter.meowing.monster",
-    "priority": 0
-  },
-  {
     "url": "https://nitter.click",
     "priority": 0
   },
   {
     "url": "https://nitter.mie.foundation",
-    "priority": 0
-  },
-  {
-    "url": "https://shitter.thepixora.com",
-    "priority": 0
-  },
-  {
-    "url": "https://nitter.pp.ua",
     "priority": 0
   }
 ]
