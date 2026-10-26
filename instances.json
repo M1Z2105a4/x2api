@@ -16,11 +16,7 @@
     "priority": 0
   },
   {
-    "url": "https://nitter.click",
-    "priority": 0
-  },
-  {
-    "url": "https://nitter.kareem.one",
+    "url": "https://nitter.xitter.cc",
     "priority": 0
   },
   {
@@ -28,15 +24,15 @@
     "priority": 0
   },
   {
-    "url": "https://nitter.pp.ua",
-    "priority": 0
-  },
-  {
     "url": "https://nitter.mie.foundation",
     "priority": 0
   },
   {
-    "url": "https://nitter.xitter.cc",
+    "url": "https://nitter.kareem.one",
+    "priority": 0
+  },
+  {
+    "url": "https://nitter.click",
     "priority": 0
   }
 ]
